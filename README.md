@@ -4,6 +4,10 @@
   <img src="./SoundDeck/Assets.xcassets/AppIcon.appiconset/icon_128x128.png" alt="Sound Deck Icon" width="128" height="128">
 </p>
 
+<p align="center">
+  <img src="./screenshot.png" alt="Sound Deck Screenshot" width="600">
+</p>
+
 A beautiful, modern macOS app for quickly playing your favorite sound files.
 
 ## Features
