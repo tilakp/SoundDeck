@@ -1,11 +1,5 @@
-//
-//  SoundDeckApp.swift
-//  SoundDeck
-//
-//  Created by Tilak Patel on 4/26/25.
-//
-
 import SwiftUI
+import AVFoundation
 
 @main
 struct SoundDeckApp: App {

@@ -6,6 +6,10 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		9E1B822D2DBDD4DB00D33E4D /* README.md in Resources */ = {isa = PBXBuildFile; fileRef = 9E1B822C2DBDD4DB00D33E4D /* README.md */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXContainerItemProxy section */
 		9E397D452DBDBDCF00EB40BA /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -24,12 +28,18 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		9E1B822C2DBDD4DB00D33E4D /* README.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = README.md; sourceTree = "<group>"; };
 		9E397D362DBDBDCE00EB40BA /* SoundDeck.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = SoundDeck.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		9E397D442DBDBDCF00EB40BA /* SoundDeckTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = SoundDeckTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		9E397D4E2DBDBDCF00EB40BA /* SoundDeckUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = SoundDeckUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
+		9E1B82362DBDD4FF00D33E4D /* sounds */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = sounds;
+			sourceTree = "<group>";
+		};
 		9E397D382DBDBDCE00EB40BA /* SoundDeck */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = SoundDeck;
@@ -75,6 +85,8 @@
 		9E397D2D2DBDBDCE00EB40BA = {
 			isa = PBXGroup;
 			children = (
+				9E1B822C2DBDD4DB00D33E4D /* README.md */,
+				9E1B82362DBDD4FF00D33E4D /* sounds */,
 				9E397D382DBDBDCE00EB40BA /* SoundDeck */,
 				9E397D472DBDBDCF00EB40BA /* SoundDeckTests */,
 				9E397D512DBDBDCF00EB40BA /* SoundDeckUITests */,
@@ -108,6 +120,7 @@
 			dependencies = (
 			);
 			fileSystemSynchronizedGroups = (
+				9E1B82362DBDD4FF00D33E4D /* sounds */,
 				9E397D382DBDBDCE00EB40BA /* SoundDeck */,
 			);
 			name = SoundDeck;
@@ -212,6 +225,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				9E1B822D2DBDD4DB00D33E4D /* README.md in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -393,6 +407,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = SoundDeck/SoundDeck.entitlements;
+				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "-";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
@@ -403,6 +418,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
+				MACOSX_DEPLOYMENT_TARGET = 14.6;
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.patelt.SoundDeck;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -418,6 +434,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = SoundDeck/SoundDeck.entitlements;
+				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "-";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
@@ -428,6 +445,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
+				MACOSX_DEPLOYMENT_TARGET = 14.6;
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.patelt.SoundDeck;
 				PRODUCT_NAME = "$(TARGET_NAME)";
