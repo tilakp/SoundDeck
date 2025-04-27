@@ -42,7 +42,7 @@ A beautiful, modern macOS app for quickly playing your favorite sound files.
 
 ## Credits
 
-- App and UI by Tilak Patel
+- App and UI by AI
 - Powered by SwiftUI and AVFoundation
 - App icon: <a href="https://www.freepik.com/icon/audio-waves_11824120">audio-waves icon by Freepik</a>
 
