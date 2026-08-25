@@ -42,13 +42,16 @@ final class SoundPlayer: NSObject, ObservableObject {
     }
 
     func play(_ sound: SoundItem, in model: SoundDeckModel) throws {
-        guard let url = model.resolve(sound) else {
+        guard let resolution = model.resolve(sound) else {
             throw PlaybackError.unresolved(name: sound.name)
         }
+        let url = resolution.url
 
         stop()
 
-        let didAccess = url.startAccessingSecurityScopedResource()
+        // Plain bookmarks (used when the build cannot create security-scoped ones)
+        // need no scope management; opening one would just return false.
+        let didAccess = resolution.needsSecurityScope && url.startAccessingSecurityScopedResource()
         guard FileManager.default.isReadableFile(atPath: url.path) else {
             if didAccess { url.stopAccessingSecurityScopedResource() }
             throw PlaybackError.unreadable(path: url.path)

@@ -2,15 +2,26 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<key>com.apple.security.app-sandbox</key>
-	<true/>
-	<key>com.apple.security.files.user-selected.read-only</key>
-	<true/>
-	<key>com.apple.security.files.bookmarks.app-scope</key>
-	<true/>
-	<key>com.apple.security.files.desktop.read-only</key>
-	<true/>
-	<key>com.apple.security.files.documents.read-only</key>
-	<true/>
+	<!--
+	  Deliberately NOT sandboxed.
+
+	  App-scoped security bookmarks (com.apple.security.files.bookmarks.app-scope)
+	  bind to the app's code-signing identity. This target signs ad-hoc
+	  (CODE_SIGN_IDENTITY = "-", no DEVELOPMENT_TEAM), so there is no stable identity
+	  to bind to and URL.bookmarkData(options: .withSecurityScope) fails with
+	  NSCocoaErrorDomain 256 "Could not open() the item" — even though the file is
+	  readable and the security scope opens successfully.
+
+	  Under the sandbox a plain bookmark cannot restore access across launches, so
+	  enabling the sandbox without a Developer Team ID means imported sounds break on
+	  every relaunch. Running unsandboxed with plain bookmarks works correctly.
+
+	  If a Developer Team ID is ever configured, re-add:
+	      com.apple.security.app-sandbox
+	      com.apple.security.files.user-selected.read-only
+	      com.apple.security.files.bookmarks.app-scope
+	  SoundDeckModel already prefers security-scoped bookmarks when they work and
+	  falls back to plain ones, so it will pick the scoped path up automatically.
+	-->
 </dict>
 </plist>
