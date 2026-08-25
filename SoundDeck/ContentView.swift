@@ -55,14 +55,11 @@ struct MaterialButton: View {
 
 struct ContentView: View {
     @StateObject private var model = SoundDeckModel()
-    @State private var audioPlayer: AVAudioPlayer?
+    @StateObject private var player = SoundPlayer()
     @State private var showingFileImporter = false
     @State private var showAlert = false
     @State private var alertMessage = ""
-    @State private var currentlyPlaying: String? = nil
-    @State private var lastPlayed: String? = nil
-    @State private var waveformSamples: [Float]? = nil
-    
+
     var body: some View {
         GeometryReader { geometry in
             let minCardWidth: CGFloat = 170
@@ -81,7 +78,7 @@ struct ContentView: View {
                         MaterialButton(label: "Add Sound", icon: "plus.circle.fill", action: { showingFileImporter = true }, background: Color.mdTeal, foreground: Color.mdCream)
                     }
                     .padding([.top, .horizontal])
-                    if let waveformSamples = waveformSamples {
+                    if let waveformSamples = player.waveformSamples {
                         WaveformView(samples: waveformSamples, color: .mdTeal)
                             .frame(height: 56)
                             .padding(.horizontal, 24)
@@ -106,15 +103,10 @@ struct ContentView: View {
                                 MaterialCard {
                                     SoundButtonView(
                                         sound: sound,
-                                        isPlaying: currentlyPlaying == sound.name,
-                                        isLastPlayed: lastPlayed == sound.name,
+                                        isPlaying: player.playingID == sound.id,
+                                        isLastPlayed: player.lastPlayedID == sound.id,
                                         playAction: { playSound(sound) },
-                                        removeAction: {
-                                            if let idx = model.sounds.firstIndex(of: sound) {
-                                                model.sounds.remove(at: idx)
-                                                model.saveSounds()
-                                            }
-                                        }
+                                        removeAction: { model.remove(sound) }
                                     )
                                 }
                             }
@@ -139,24 +131,16 @@ struct ContentView: View {
             ) { result in
                 switch result {
                 case .success(let urls):
-                    if let url = urls.first {
-                        print("[DEBUG] url: \(url), isFileURL: \(url.isFileURL), path: \(url.path)")
+                    for url in urls {
                         do {
-                            let bookmark = try url.bookmarkData(options: [.withSecurityScope], includingResourceValuesForKeys: nil, relativeTo: nil)
-                            let newSound = SoundItem(name: url.lastPathComponent, bookmarkData: bookmark)
-                            model.sounds.append(newSound)
-                            model.saveSounds()
-                            print("[DEBUG] Created bookmark for: \(url.path)")
+                            try model.addSound(url: url)
                         } catch {
-                            print("[DEBUG] Failed to create bookmark for \(url.path): \(error)")
-                            alertMessage = "Failed to add sound: \(error.localizedDescription)"
-                            showAlert = true
+                            present(error)
                         }
                     }
                 case .failure(let error):
                     print("Failed to import file: \(error)")
-                    alertMessage = "Failed to import file: \(error.localizedDescription)"
-                    showAlert = true
+                    present(error)
                 }
             }
             .alert(isPresented: $showAlert) {
@@ -168,49 +152,28 @@ struct ContentView: View {
     }
     
     private func playSound(_ sound: SoundItem) {
-        guard let url = sound.fileURL else {
-            print("Could not resolve file URL for sound: \(sound.name)")
-            return
-        }
-        let didStartAccessing = url.startAccessingSecurityScopedResource()
-        print("[DEBUG] startAccessingSecurityScopedResource: \(didStartAccessing) for \(url.path)")
-        defer {
-            if didStartAccessing { url.stopAccessingSecurityScopedResource() }
-        }
         do {
-            let fileManager = FileManager.default
-            guard fileManager.isReadableFile(atPath: url.path) else {
-                print("File is not readable at path: \(url.path)")
-                return
-            }
-            print("[DEBUG] Attempting to play: \(url.path)")
-            audioPlayer = try AVAudioPlayer(contentsOf: url)
-            audioPlayer?.play()
-            currentlyPlaying = sound.name
-            lastPlayed = sound.name
-            print("[DEBUG] Playback started for: \(url.lastPathComponent)")
-            // Analyze waveform (async)
-            let asset = AVAsset(url: url)
-            asset.waveformSamples(sampleCount: 500) { samples in
-                DispatchQueue.main.async {
-                    self.waveformSamples = samples
-                }
-            }
+            try player.play(sound, in: model)
         } catch {
-            print("Could not play sound: \(error)")
+            present(error)
         }
     }
-    
+
     private func stopSound() {
-        audioPlayer?.stop()
-        currentlyPlaying = nil
-        waveformSamples = nil
+        player.stop()
     }
-    
+
     private func replayLastSound() {
-        if let lastName = lastPlayed, let sound = model.sounds.first(where: { $0.name == lastName }) {
-            playSound(sound)
+        do {
+            try player.replayLast(in: model)
+        } catch {
+            present(error)
         }
+    }
+
+    private func present(_ error: Error) {
+        alertMessage = error.localizedDescription
+        showAlert = true
     }
 }
 

@@ -10,7 +10,8 @@ struct WaveformView: View {
             let height = geometry.size.height
             let width = geometry.size.width
             let count = samples.count
-            let step = max(1, count / Int(width))
+            // Int(width) is 0 during the first layout pass; guard the divide.
+            let step = max(1, count / max(1, Int(width)))
             let points = stride(from: 0, to: count, by: step).map { i in
                 CGPoint(
                     x: CGFloat(i) / CGFloat(count) * width,
@@ -61,12 +62,16 @@ extension AVAsset {
             }
             assetReader.cancelReading()
             guard !samples.isEmpty else { completion(nil); return }
-            // Downsample to sampleCount
-            let downsampled = stride(from: 0, to: samples.count, by: samples.count / sampleCount).map { i in
-                let chunk = samples[i..<min(i + samples.count / sampleCount, samples.count)]
-                return chunk.max() ?? 0
+            // Downsample to sampleCount. Clips shorter than sampleCount frames would
+            // otherwise give a bucket size of 0, and stride(by: 0) traps.
+            let bucketSize = max(1, samples.count / sampleCount)
+            let downsampled = stride(from: 0, to: samples.count, by: bucketSize).map { i in
+                let chunk = samples[i..<min(i + bucketSize, samples.count)]
+                // Peak amplitude, not peak signed value — troughs count too.
+                return chunk.lazy.map { abs($0) }.max() ?? 0
             }
-            let maxAbs = downsampled.map { abs($0) }.max() ?? 1
+            let maxAbs = downsampled.max() ?? 0
+            guard maxAbs > 0 else { completion(nil); return }
             completion(downsampled.map { $0 / maxAbs })
         }
     }
