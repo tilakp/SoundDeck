@@ -32,8 +32,9 @@ final class SoundLibrary: ObservableObject {
         assignMissingHotKeys()
     }
 
-    /// Libraries written before hotkeys existed — or imported while the keyboard was
-    /// full — come back with none. Fill the gaps so every reachable pad has a trigger.
+    /// Some libraries have no hotkeys. This occurs with a library written before
+    /// hotkeys existed, or with an import made while the keyboard was full.
+    /// Fill the gaps so that every reachable pad has a trigger.
     private func assignMissingHotKeys() {
         var changed = false
         for index in sounds.indices where sounds[index].hotKey == nil {
@@ -100,8 +101,8 @@ final class SoundLibrary: ObservableObject {
         save()
     }
 
-    /// Reorders by id, which survives filtering — index-based moves do not when a
-    /// search is active.
+    /// Reorders by id. An id survives filtering. An index-based move does not
+    /// survive filtering when a search is active.
     func move(id: UUID, before targetID: UUID) {
         guard id != targetID,
               let from = sounds.firstIndex(where: { $0.id == id }),
@@ -128,7 +129,7 @@ final class SoundLibrary: ObservableObject {
         sounds.first { $0.hotKey?.lowercased() == key.lowercased() }
     }
 
-    /// 1-9 then 0, then letters — matching the order the deck is laid out in.
+    /// Uses 1 to 9, then 0, then letters. This matches the layout order of the deck.
     private func nextAvailableHotKey() -> String? {
         let candidates = (1...9).map(String.init) + ["0"] + "abcdefghijklmnopqrstuvwxyz".map(String.init)
         let taken = Set(sounds.compactMap { $0.hotKey })

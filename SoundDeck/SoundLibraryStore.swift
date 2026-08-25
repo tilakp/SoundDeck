@@ -4,7 +4,7 @@ import Foundation
 ///
 /// This replaces the original `UserDefaults` blob. `UserDefaults` is a preferences
 /// store, not a document store: it is cached per-domain, rewritten wholesale on every
-/// change, and a sandbox transition silently swaps it for a different container —
+/// change. A change to the sandbox status replaces the container.
 /// which is exactly how an earlier build appeared to lose its library.
 ///
 /// Writes go through a temporary file and an atomic replace so an interrupted save
@@ -37,7 +37,7 @@ struct SoundLibraryStore {
                 print("[DEBUG] Loaded \(payload.sounds.count) sounds from \(fileURL.path)")
                 return payload.sounds
             } catch {
-                // Keep the unreadable file rather than overwriting it — it is the only
+                // Keep the unreadable file. Do not overwrite it. It is the only
                 // copy of the user's deck and may be recoverable by hand.
                 let salvage = directoryURL.appendingPathComponent("library-corrupt-\(Int(Date().timeIntervalSince1970)).json")
                 try? fileManager.moveItem(at: fileURL, to: salvage)

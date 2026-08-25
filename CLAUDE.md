@@ -2,76 +2,162 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Writing style
+
+Write all documentation, code comments and commit messages in ASD-STE100 (Simplified Technical English).
+
+Obey these rules:
+
+- Do not use em dashes. Use a period, a colon, a semicolon or a comma. If a sentence needs an em dash, write two sentences.
+- Keep procedural sentences to 20 words or fewer. Keep descriptive sentences to 25 words or fewer.
+- Write one instruction per sentence.
+- Use the active voice.
+- Use the imperative for steps.
+- Use one word for one meaning.
+- Keep noun clusters to three words or fewer.
+- Keep paragraphs to six sentences or fewer.
+
 ## Project
 
-Sound Deck is a native macOS SwiftUI soundboard: a grid of pads that play audio instantly, with global hotkeys, a menu bar deck, and selectable audio output so the sounds can be routed into conferencing and streaming apps.
+Sound Deck is a soundboard for macOS. It uses SwiftUI. It has a grid of pads that play audio files. It has global hotkeys, a menu bar deck and a selectable output device.
 
-`PRODUCT_BUNDLE_IDENTIFIER` is **`com.patelt.SoundDeck`**. The `Info.plist` at the repo root says `com.cascade.SoundDeck` and is **vestigial** — Xcode 16 synced folders generate their own, so that file is not the one that ships. `MACOSX_DEPLOYMENT_TARGET` is **14.6** (the README's claim of 13.0 is stale). `Package.swift` mirrors this as `.macOS(.v14)` and must be kept in sync; when they drift, SourceKit type-checks against the wrong SDK floor and reports availability errors the real Xcode build does not.
+The value of `PRODUCT_BUNDLE_IDENTIFIER` is `com.patelt.SoundDeck`.
 
-## Build & Test
+The file `Info.plist` in the repository root gives `com.cascade.SoundDeck`. This file is obsolete. Xcode 16 synced folders create their own `Info.plist`. The build does not use the file in the root.
+
+The value of `MACOSX_DEPLOYMENT_TARGET` is 14.6.
+
+The file `Package.swift` gives the same value as `.macOS(.v14)`. Keep the two values the same. If the values are different, SourceKit uses the incorrect SDK level. SourceKit then reports availability errors. The Xcode build does not report these errors.
+
+## Build and test
+
+To build the application, type the command that follows. This command builds the application that ships.
 
 ```bash
-# Build (preferred — this is what actually ships)
 xcodebuild -project SoundDeck.xcodeproj -scheme SoundDeck -configuration Debug build
-
-# Tests (both targets are still placeholder skeletons)
-xcodebuild -project SoundDeck.xcodeproj -scheme SoundDeck -destination 'platform=macOS' test
-
-# A single test (SoundDeckTests uses Swift Testing: @Test / #expect)
-xcodebuild -project SoundDeck.xcodeproj -scheme SoundDeck -destination 'platform=macOS' \
-  -only-testing:SoundDeckTests/SoundDeckTests/example test
-
-# Fast type-check only
-swift build
 ```
 
-`Package.swift` is a **type-check aid only**. It has no entitlements, asset catalog, or bundled sounds, so playback and import do not work under `swift run`. It is scoped to the `SoundDeck/` directory — globbing the repo root previously compiled the test targets into the app module.
+To run all tests, type the command that follows. The two test targets contain only empty examples.
 
-To watch debug output, run the built binary directly rather than through Xcode:
+```bash
+xcodebuild -project SoundDeck.xcodeproj -scheme SoundDeck -destination 'platform=macOS' test
+```
+
+To run one test, type the command that follows. The target `SoundDeckTests` uses Swift Testing with `@Test` and `#expect`.
+
+```bash
+xcodebuild -project SoundDeck.xcodeproj -scheme SoundDeck -destination 'platform=macOS' \
+  -only-testing:SoundDeckTests/SoundDeckTests/example test
+```
+
+To do a quick type check, type `swift build`.
+
+The file `Package.swift` is a type check aid only. It has no entitlements, no asset catalog and no bundled sounds. Playback and import do not operate with `swift run`. The target includes only the `SoundDeck/` directory. A previous version included the repository root. That version compiled the test targets into the application module.
+
+To see debug output, run the binary directly. Do not use Xcode.
 
 ```bash
 ~/Library/Developer/Xcode/DerivedData/SoundDeck-*/Build/Products/Debug/SoundDeck.app/Contents/MacOS/SoundDeck
 ```
 
-`SoundDeckApp.init` calls `setvbuf(stdout, nil, _IONBF, 0)` because `print` is block-buffered when stdout is a pipe, which silently swallows all output when launched from a script.
+The function `SoundDeckApp.init` calls `setvbuf(stdout, nil, _IONBF, 0)`. The function `print` uses block buffering when stdout is a pipe. Without this call, a script launch loses all output.
 
-## Signing and the sandbox — read before touching entitlements
+## Signing and the sandbox
 
-**The app is deliberately unsandboxed.** This is not an oversight, and re-enabling the sandbox without also fixing signing will break audio import.
+Read this section before you change the entitlements.
 
-The target signs ad-hoc (`CODE_SIGN_IDENTITY = "-"`, no `DEVELOPMENT_TEAM`). App-scoped security bookmarks bind to the app's code-signing identity, and an ad-hoc signature has none to bind to, so `URL.bookmarkData(options: .withSecurityScope)` fails with `NSCocoaErrorDomain 256 "Could not open() the item"` — even though the file is readable and the security scope opens successfully. Under the sandbox a *plain* bookmark cannot restore access across launches, so a sandboxed ad-hoc build loses every imported sound on relaunch.
+The application does not use the App Sandbox. This is deliberate. If you enable the sandbox and do not also change the signature, audio import stops.
 
-`BookmarkFlavor` (in `SoundItem.swift`) therefore tries a security-scoped bookmark first and falls back to a plain one, recording which flavour it used per sound. **A bookmark must be resolved with the same option it was created with** — hence `SoundItem.isSecurityScoped`. A build signed with a real Team ID picks the scoped path back up automatically; `SoundDeck.entitlements` documents the keys to restore.
+The target uses an ad-hoc signature. The value of `CODE_SIGN_IDENTITY` is `-`. There is no `DEVELOPMENT_TEAM`.
+
+The system attaches an app-scoped security bookmark to the code signature. An ad-hoc signature has no identity. Therefore `URL.bookmarkData(options: .withSecurityScope)` fails. The error is `NSCocoaErrorDomain 256 "Could not open() the item"`. The file is readable. The security scope opens correctly. The operation still fails.
+
+A plain bookmark cannot restore access in the sandbox. A sandboxed build with an ad-hoc signature loses all imported sounds at the next start.
+
+The type `BookmarkFlavor` is in `SoundItem.swift`. It tries a security-scoped bookmark first. It uses a plain bookmark only if the first operation fails. It records the type of each bookmark.
+
+You must resolve a bookmark with the same option that created it. The property `SoundItem.isSecurityScoped` holds this option.
+
+A build with a Team ID uses security-scoped bookmarks again. The file `SoundDeck.entitlements` lists the keys to add.
 
 ## Architecture
 
-Data flows one way: `SoundLibrary` owns what's in the deck, `AudioEngine` owns what's making noise, and views read both.
+The data flows in one direction. The type `SoundLibrary` holds the contents of the deck. The type `AudioEngine` holds the audio state. The views read both types.
 
-- **`SoundItem.swift`** — the model, plus `BookmarkFlavor`. Every field added since v1 is decoded with `decodeIfPresent`; a strict decoder would reject older libraries and silently wipe someone's deck. Keep that discipline when adding fields.
-- **`SoundLibraryStore.swift`** — JSON in `~/Library/Application Support/SoundDeck/library.json`, written atomically. Deliberately *not* `UserDefaults`: that is a preferences store, and a sandbox transition swaps it for a different container, which is how an earlier build appeared to lose its library. An unreadable file is preserved as `library-corrupt-*.json` rather than overwritten. Migrates from the legacy `UserDefaults` key once.
-- **`SoundLibrary.swift`** — add / remove / reorder / rename / hotkey assignment / search. `resolve()` persists refreshed bookmarks when macOS reports one stale.
-- **`AudioEngine.swift`** — an `AVAudioEngine` graph, one *voice* per trigger, so sounds layer:
-  `AVAudioPlayerNode → AVAudioMixerNode (per-voice gain, fade) → mainMixerNode (master) → outputNode (routable)`.
-  Voices are attached on play and detached on retire. Callers must go through `retire()` so the security scope is released and the badge clears only when a sound's *last* voice ends. The engine pauses when idle to release the output device.
-- **`AudioDevice.swift`** — CoreAudio output enumeration, flagging likely virtual devices (BlackHole, Loopback). Output routing is set via `AudioUnitSetProperty(kAudioOutputUnitProperty_CurrentDevice)` and **only works while the engine is stopped**.
-- **`GlobalHotKeys.swift`** — Carbon `RegisterEventHotKey`, deliberately not `NSEvent.addGlobalMonitorForEvents`: the monitor needs Accessibility permission and sees every keystroke system-wide. Carbon needs no permission and only fires for registered combos. The C callback has no user-data parameter, so dispatch goes through a singleton keyed by hotkey id.
-- **`Theme.swift`** — palette, chrome, motion. Surfaces are **opaque, not `.ultraThinMaterial`**: on macOS a material samples whatever is behind the *window*, so over a bright desktop it washes the dark theme out to grey.
-- **`ContentView` / `SoundTile` / `SoundInspector` / `MenuBarDeck`** — the views. `SoundLibrary` and `AudioEngine` are owned by `SoundDeckApp` so the window and menu bar drive one deck, not two copies.
+### SoundItem.swift
 
-Cross-cutting things that will bite:
+This file holds the model and the type `BookmarkFlavor`.
 
-- Playback state is keyed by `SoundItem.id`, never by filename — duplicate names used to highlight each other.
-- `WaveformView`'s decoder reduces to an envelope *while reading*; do not go back to accumulating every frame, as a few minutes of 48kHz stereo is tens of millions of floats.
-- Bucket sizes in waveform code must be floored at 1. `stride(by: 0)` traps, which crashed on clips shorter than the sample target and at zero layout width.
-- Debug logging is `print("[DEBUG] …")`; there is no logging framework.
+The decoder reads each new field with `decodeIfPresent`. A strict decoder rejects an older library file. A rejected file deletes the deck of the user. Keep this method when you add a field.
+
+### SoundLibraryStore.swift
+
+This file writes JSON to `~/Library/Application Support/SoundDeck/library.json`. The write is atomic.
+
+Do not use `UserDefaults`. `UserDefaults` is a preferences store. A change to the sandbox status replaces the container. An earlier build lost its library for this reason.
+
+The store keeps an unreadable file as `library-corrupt-*.json`. It does not overwrite the file. The store migrates the old `UserDefaults` key one time.
+
+### SoundLibrary.swift
+
+This file adds, removes, reorders and renames sounds. It also assigns hotkeys and does searches.
+
+The function `resolve()` saves a refreshed bookmark when macOS reports a stale bookmark.
+
+### AudioEngine.swift
+
+This file holds an `AVAudioEngine` graph. Each trigger creates one voice. Therefore sounds play at the same time.
+
+The graph is:
+
+`AVAudioPlayerNode` to `AVAudioMixerNode` (voice gain and fade) to `mainMixerNode` (master gain) to `outputNode` (routable).
+
+The engine attaches a voice at playback. The engine detaches the voice at retirement. Always use the function `retire()`. This function releases the security scope. It also clears the pad state after the last voice of a sound stops.
+
+The engine pauses when it is idle. This releases the output device.
+
+### AudioDevice.swift
+
+This file lists the CoreAudio output devices. It marks the probable virtual devices such as BlackHole and Loopback.
+
+The application sets the output device with `AudioUnitSetProperty(kAudioOutputUnitProperty_CurrentDevice)`. This operation is possible only when the engine is stopped.
+
+### GlobalHotKeys.swift
+
+This file uses the Carbon function `RegisterEventHotKey`.
+
+Do not use `NSEvent.addGlobalMonitorForEvents`. That function needs Accessibility permission. That function also receives all keystrokes of the system. The Carbon function needs no permission. The Carbon function receives only the registered combinations.
+
+The C callback has no user data parameter. Therefore the dispatch table is in a singleton. The key of the table is the hotkey ID.
+
+### Theme.swift
+
+This file holds the palette, the chrome and the motion values.
+
+The surfaces are opaque. Do not use `.ultraThinMaterial`. On macOS a material samples the content behind the window. Above a bright desktop, a material makes the dark theme grey.
+
+### Views
+
+The views are `ContentView`, `SoundTile`, `SoundInspector` and `MenuBarDeck`.
+
+The type `SoundDeckApp` owns `SoundLibrary` and `AudioEngine`. Therefore the window and the menu bar use the same deck.
+
+## Cautions
+
+- The playback state uses `SoundItem.id`. Do not use the file name. Two files with the same name showed the same state.
+- The decoder in `WaveformView` makes an envelope during the read. Do not collect all frames. Some minutes of 48 kHz stereo audio give tens of millions of float values.
+- Set a minimum of 1 for each bucket size in the waveform code. The function `stride(by: 0)` causes a trap. This trap occurred with short clips and with zero layout width.
+- Debug output uses `print("[DEBUG] …")`. There is no logging framework.
 
 ## Icon
 
-Generated, not hand-drawn. The CoreGraphics script renders each size natively rather than downscaling a 1024 master, so the glyph stays crisp at 16pt. Regenerate with:
+A script creates the icon. The script renders each size directly. It does not scale down a 1024 pixel image. Therefore the glyph stays sharp at 16 points.
+
+To create the icon files, type the commands that follow.
 
 ```bash
 swift Tools/MakeIcon.swift <output-dir>
 cp <output-dir>/*.png SoundDeck/Assets.xcassets/AppIcon.appiconset/
 ```
 
-The catalog references a duplicate `icon_32x32 1.png` for the 16pt @2x slot; the script writes it.
+The asset catalog uses a second copy of the 32 pixel file with the name `icon_32x32 1.png`. This copy fills the 16 point 2x slot. The script writes this copy.

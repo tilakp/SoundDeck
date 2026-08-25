@@ -9,7 +9,7 @@ enum Theme {
 
     // MARK: Surfaces
 
-    /// Deep, slightly blue-shifted charcoal — warmer than pure black under the
+    /// Deep charcoal with a small blue shift. It is warmer than pure black under the
     /// translucent materials layered on top of it.
     static let backdropTop = Color(red: 0.055, green: 0.063, blue: 0.086)
     static let backdropBottom = Color(red: 0.027, green: 0.031, blue: 0.047)

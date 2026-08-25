@@ -69,7 +69,7 @@ struct SoundInspector: View {
                     .font(.system(size: 11, weight: .semibold, design: .rounded))
                     .foregroundStyle(Theme.textSecondary)
                 Spacer()
-                Text("\(format(trimStart)) – \(format(trimEnd))  ·  \(format(max(0, trimEnd - trimStart))) long")
+                Text("\(format(trimStart)) to \(format(trimEnd))  ·  \(format(max(0, trimEnd - trimStart))) long")
                     .font(.system(size: 10, design: .monospaced))
                     .foregroundStyle(Theme.textTertiary)
             }

@@ -8,77 +8,101 @@
   <img src="./screenshot.png" alt="Sound Deck Screenshot" width="720">
 </p>
 
-A fast, modern macOS soundboard. Drop in audio files, hit a key, hear them — in your own ears or in everyone else's.
+Sound Deck is a soundboard for macOS. Add your audio files to the deck. Press a key to play them. Send the audio to your speakers or to a call.
 
 ## Features
 
-**Playing**
-- **Layered playback** — sounds stack instead of cutting each other off
-- **Per-sound volume** and a master level, with a short fade-out instead of a hard cut
-- **Trim** any clip to just the part you want, by dragging handles on its waveform
-- **Loop** for ambience and beds
-- **Live waveform** with a playhead while a sound is running
+### Playback
 
-**Triggering**
-- **Hotkeys** — every pad gets a key; press it to fire
-- **Global hotkeys** — <kbd>⌃</kbd><kbd>⌥</kbd> + a pad's key works from any app, so you can trigger sounds mid-call without leaving the app you're in
-- **Menu bar deck** — the whole board in a popover, without bringing the window forward
-- <kbd>Space</kbd> stops everything, <kbd>Return</kbd> replays the last sound
+- Sounds play at the same time. A new sound does not stop the previous sound.
+- Each sound has its own volume level. The deck also has a master volume.
+- Sounds fade out when they stop. They do not cut off.
+- You can trim a sound to a shorter section.
+- You can set a sound to loop.
+- The deck shows a waveform and a playhead during playback.
 
-**Routing**
-- **Choose the output device.** Point the deck at a virtual device like [BlackHole](https://github.com/ExistentialAudio/BlackHole) or Loopback and Zoom, Discord, Meet, or OBS will pick it up as an input — which is the whole point of a soundboard. Virtual devices are called out separately in the picker.
+### Triggers
 
-**Organising**
-- Drag and drop files in, or add several at once
-- Search, drag to reorder, rename
-- Colour tags and emoji icons per pad
+- Each pad has a keyboard key. Press the key to play the pad.
+- Global hotkeys work in all applications. Press Control-Option and the key of the pad.
+- The menu bar icon opens a compact deck. You do not have to open the main window.
+- Press Space to stop all sounds. Press Return to play the last sound again.
 
-## Getting the deck into a call
+### Output
 
-Out of the box, sounds play through your speakers — fine for you, inaudible to everyone else. To let other people hear them:
+- You can select the output device.
+- Select a virtual device to send the audio to a call or to a stream.
+- The device menu shows virtual devices in a separate group.
 
-1. Install a virtual audio device. [BlackHole](https://github.com/ExistentialAudio/BlackHole) is free: `brew install blackhole-2ch`
-2. In Sound Deck, click the output picker in the header and choose it under **Virtual**.
-3. In Zoom / Discord / Meet / OBS, set your **microphone** to that same device.
+### Library
 
-That routes the deck into the call but replaces your voice. To have both, create a **Multi-Output** or **Aggregate Device** in Audio MIDI Setup combining your microphone and the virtual device, and select that as the call's input.
+- Drag audio files onto the window to add them. You can add more than one file.
+- You can search the deck.
+- You can drag a pad to a new position.
+- You can rename a pad.
+- You can set a colour and an emoji for each pad.
 
-Turn on **global hotkeys** from the menu bar icon and you can trigger sounds with <kbd>⌃</kbd><kbd>⌥</kbd> + a pad's key without ever leaving the call window.
+## Send the audio to a call
+
+The deck sends audio to your speakers. Other people in a call cannot hear this audio. To send the audio to a call, do the steps that follow.
+
+1. Install a virtual audio device. To install BlackHole, type `brew install blackhole-2ch`.
+2. In Sound Deck, open the output menu in the header.
+3. Select the virtual device from the **Virtual** group.
+4. In Zoom, Discord, Meet or OBS, set the microphone to the same virtual device.
+
+The call now receives the audio from the deck. The call does not receive your voice.
+
+To send your voice and the deck audio together, do the steps that follow.
+
+1. Open Audio MIDI Setup.
+2. Create an aggregate device.
+3. Add your microphone and the virtual device to the aggregate device.
+4. Set the microphone of the call to the aggregate device.
+
+To play sounds without leaving the call window, enable global hotkeys. Click the menu bar icon. Set **Global hotkeys** to on. Press Control-Option and the key of a pad.
 
 ## Requirements
 
 - macOS 14.6 or later
-- Xcode 16 or later to build
+- Xcode 16 or later to build the application
 
 ## Build
 
-```bash
-git clone <this repo>
-cd SoundDeck
-open SoundDeck.xcodeproj   # then ⌘R
-```
+To build the application in Xcode, do the steps that follow.
 
-Or from the command line:
+1. Clone the repository.
+2. Open `SoundDeck.xcodeproj`.
+3. Press Command-R.
+
+To build the application from a terminal, type the command that follows.
 
 ```bash
 xcodebuild -project SoundDeck.xcodeproj -scheme SoundDeck -configuration Debug build
 ```
 
-## A note on sandboxing
+## The application does not use the sandbox
 
-Sound Deck ships **unsandboxed**, deliberately.
+Sound Deck does not use the App Sandbox. This is deliberate.
 
-App-scoped security bookmarks — the mechanism that remembers access to files you've picked — are bound to the app's code-signing identity. This project signs ad-hoc ("Sign to Run Locally") because it assumes no paid Apple Developer account, and an ad-hoc signature has no identity to bind to: creating one fails with `NSCocoaErrorDomain 256`, even though the file is perfectly readable. Under the sandbox a plain bookmark can't restore access across launches either, so a sandboxed ad-hoc build would forget every sound you added the moment you quit.
+The application uses bookmarks to keep access to the files that you add. The system attaches a security-scoped bookmark to the code signature of the application. This project uses an ad-hoc signature, because it does not assume a paid Apple Developer account. An ad-hoc signature has no identity. Therefore the system cannot create a security-scoped bookmark. The operation fails with error 256 in `NSCocoaErrorDomain`. The file is readable, but the operation still fails.
 
-Running unsandboxed avoids all of that, and plain bookmarks work correctly. macOS may ask once for access to a folder like Downloads — that's ordinary TCC, and granting it is enough.
+A plain bookmark cannot restore access in the sandbox. A sandboxed application with an ad-hoc signature loses all added sounds at the next start.
 
-If you *do* have a Developer Team ID, set it on the target and re-add the three entitlement keys listed in `SoundDeck/SoundDeck.entitlements`. The code already prefers security-scoped bookmarks and falls back only when they fail, so it will switch over on its own.
+The application does not use the sandbox. Plain bookmarks are correct in this condition. macOS can ask for access to a folder such as Downloads. This is a standard TCC request. Give the access one time.
+
+If you have an Apple Developer Team ID, do the steps that follow.
+
+1. Set the Team ID on the target.
+2. Add the three entitlement keys from `SoundDeck/SoundDeck.entitlements`.
+
+The application tries a security-scoped bookmark first. It uses a plain bookmark only if the first operation fails. Therefore the application changes to security-scoped bookmarks automatically.
 
 ## Credits
 
-- Powered by SwiftUI, AVFoundation and CoreAudio
-- App icon generated by `Tools/MakeIcon.swift`
+- Built with SwiftUI, AVFoundation and CoreAudio
+- The script `Tools/MakeIcon.swift` creates the application icon
 
 ---
 
-Requests and issues welcome.
+Send your requests and problem reports to the issue tracker.

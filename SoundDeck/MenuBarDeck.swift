@@ -1,7 +1,7 @@
 import SwiftUI
 
 /// Compact deck for the menu bar, so sounds are reachable without bringing the window
-/// forward — the usual case when the deck is being used during a call.
+/// forward. This is the usual condition during a call.
 struct MenuBarDeck: View {
     @ObservedObject var library: SoundLibrary
     @ObservedObject var engine: AudioEngine

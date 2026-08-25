@@ -66,7 +66,7 @@ struct ContentView: View {
 
     private var header: some View {
         // The search field is overlaid rather than placed between the two groups, so
-        // it centres on the window instead of on the leftover space — which would
+        // it centres on the window instead of on the leftover space. That space would
         // drift as the branding and device names change width.
         ZStack {
             headerSides

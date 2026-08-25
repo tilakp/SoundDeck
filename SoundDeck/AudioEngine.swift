@@ -5,7 +5,7 @@ import Foundation
 /// Playback for the whole deck.
 ///
 /// Replaces the original single `AVAudioPlayer`, which could only hold one sound at a
-/// time — every new trigger cut off the previous one. An `AVAudioEngine` graph gives
+/// time. Every new trigger cut off the previous one. An `AVAudioEngine` graph gives
 /// each trigger its own voice, so sounds layer, and adds three things the old player
 /// could not do at all: per-sound gain, a fade-out instead of a hard cut, and
 /// choosing which output device the deck plays into.

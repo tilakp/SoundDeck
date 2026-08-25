@@ -68,7 +68,7 @@ struct SoundItem: Identifiable, Codable, Equatable {
     }
 
     // Every added field is decoded leniently. Libraries written by earlier builds must
-    // keep loading — a strict decoder would silently wipe someone's whole deck.
+    // keep loading. A strict decoder deletes the whole deck of the user.
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         id = try c.decode(UUID.self, forKey: .id)
