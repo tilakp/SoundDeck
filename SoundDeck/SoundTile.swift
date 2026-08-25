@@ -9,7 +9,7 @@ struct SoundTile: View {
     let stop: () -> Void
     let remove: () -> Void
     let update: ((inout SoundItem) -> Void) -> Void
-    let beginRename: () -> Void
+    let openInspector: () -> Void
 
     @State private var hovering = false
     @State private var pressed = false
@@ -161,7 +161,7 @@ struct SoundTile: View {
         Button("Play") { play() }
         if isPlaying { Button("Stop") { stop() } }
         Divider()
-        Button("Rename…") { beginRename() }
+        Button("Edit…") { openInspector() }
 
         Menu("Colour") {
             ForEach(SoundTint.allCases) { option in

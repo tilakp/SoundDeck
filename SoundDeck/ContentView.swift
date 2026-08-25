@@ -11,8 +11,7 @@ struct ContentView: View {
     @State private var showAlert = false
     @State private var alertMessage = ""
     @State private var isDropTargeted = false
-    @State private var renaming: SoundItem?
-    @State private var renameText = ""
+    @State private var inspecting: SoundItem?
 
     private static let audioExtensions: Set<String> = [
         "wav", "aiff", "aif", "mp3", "m4a", "aac", "caf", "flac", "ogg", "wma"
@@ -56,12 +55,9 @@ struct ContentView: View {
         } message: {
             Text(alertMessage)
         }
-        .sheet(item: $renaming) { sound in
-            RenameSheet(name: $renameText) {
-                library.rename(sound, to: renameText)
-                renaming = nil
-            } cancel: {
-                renaming = nil
+        .sheet(item: $inspecting) { sound in
+            SoundInspector(sound: sound, library: library, engine: engine) {
+                inspecting = nil
             }
         }
     }
@@ -280,10 +276,7 @@ struct ContentView: View {
                                     library.remove(sound)
                                 },
                                 update: { mutate in library.update(sound, mutate) },
-                                beginRename: {
-                                    renameText = sound.name
-                                    renaming = sound
-                                }
+                                openInspector: { inspecting = sound }
                             )
                             .onDrag {
                                 NSItemProvider(object: sound.id.uuidString as NSString)
@@ -426,32 +419,6 @@ struct ReorderDropDelegate: DropDelegate {
             }
         }
         return true
-    }
-}
-
-// MARK: - Rename
-
-struct RenameSheet: View {
-    @Binding var name: String
-    let commit: () -> Void
-    let cancel: () -> Void
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Text("Rename Sound")
-                .font(.system(size: 14, weight: .bold, design: .rounded))
-            TextField("Name", text: $name)
-                .textFieldStyle(.roundedBorder)
-                .frame(width: 260)
-                .onSubmit(commit)
-            HStack {
-                Spacer()
-                Button("Cancel", action: cancel)
-                Button("Save", action: commit)
-                    .keyboardShortcut(.defaultAction)
-            }
-        }
-        .padding(18)
     }
 }
 
