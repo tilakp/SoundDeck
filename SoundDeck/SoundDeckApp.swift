@@ -1,5 +1,4 @@
 import SwiftUI
-import AVFoundation
 
 @main
 struct SoundDeckApp: App {
@@ -12,6 +11,13 @@ struct SoundDeckApp: App {
     var body: some Scene {
         WindowGroup {
             ContentView()
+        }
+        // Chromeless: the deck draws its own header, so the system title bar would
+        // just be a grey band above a dark window.
+        .windowStyle(.hiddenTitleBar)
+        .defaultSize(width: 900, height: 640)
+        .commands {
+            CommandGroup(replacing: .newItem) {}
         }
     }
 }

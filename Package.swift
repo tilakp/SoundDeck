@@ -15,19 +15,13 @@ let package = Package(
     targets: [
         // Type-checking aid only — the shippable app is built from SoundDeck.xcodeproj,
         // which supplies entitlements, the asset catalog and the bundled sounds.
-        // Sources are listed explicitly: globbing the repo root previously pulled the
-        // test targets into this module.
+        // Scoped to the SoundDeck directory: globbing the repo root previously pulled
+        // the test targets into this module.
         .executableTarget(
             name: "SoundDeck",
             dependencies: [],
             path: "SoundDeck",
-            sources: [
-                "SoundDeckApp.swift",
-                "SoundDeckModel.swift",
-                "SoundPlayer.swift",
-                "ContentView.swift",
-                "WaveformView.swift"
-            ]
+            exclude: ["Assets.xcassets", "AppIcon.appiconset", "SoundDeck.entitlements", "audio-waves.png"]
         )
     ]
 )
