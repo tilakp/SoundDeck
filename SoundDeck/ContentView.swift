@@ -4,8 +4,8 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 struct ContentView: View {
-    @StateObject private var library = SoundLibrary()
-    @StateObject private var engine = AudioEngine()
+    @ObservedObject var library: SoundLibrary
+    @ObservedObject var engine: AudioEngine
 
     @State private var showingFileImporter = false
     @State private var showAlert = false
