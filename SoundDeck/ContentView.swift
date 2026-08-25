@@ -65,6 +65,17 @@ struct ContentView: View {
     // MARK: - Header
 
     private var header: some View {
+        // The search field is overlaid rather than placed between the two groups, so
+        // it centres on the window instead of on the leftover space — which would
+        // drift as the branding and device names change width.
+        ZStack {
+            headerSides
+            searchField
+                .frame(width: 250)
+        }
+    }
+
+    private var headerSides: some View {
         HStack(spacing: 12) {
             HStack(spacing: 10) {
                 ZStack {
@@ -86,10 +97,8 @@ struct ContentView: View {
                 }
             }
 
-            Spacer(minLength: 8)
-
-            searchField
-                .frame(maxWidth: 220)
+            // Reserves the centre for the overlaid search field.
+            Spacer(minLength: 270)
 
             outputMenu
 

@@ -18,20 +18,20 @@ struct SoundTile: View {
 
     var body: some View {
         Button(action: play) {
-            VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: 6) {
                 header
                 Spacer(minLength: 0)
                 footer
             }
-            .padding(12)
-            .frame(height: 104, alignment: .topLeading)
+            .padding(10)
+            .frame(height: Theme.tileHeight, alignment: .topLeading)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(background)
             .overlay(border)
             .overlay(alignment: .top) { playingEdge }
             .clipShape(RoundedRectangle(cornerRadius: Theme.tileRadius, style: .continuous))
             .shadow(color: isPlaying ? tint.opacity(0.34) : .black.opacity(0.22),
-                    radius: isPlaying ? 16 : 8, y: 4)
+                    radius: isPlaying ? 12 : 6, y: 3)
             .scaleEffect(pressed ? 0.96 : (hovering ? 1.018 : 1))
         }
         .buttonStyle(.plain)
@@ -52,11 +52,11 @@ struct SoundTile: View {
     // MARK: Pieces
 
     private var header: some View {
-        HStack(alignment: .top, spacing: 9) {
+        HStack(alignment: .top, spacing: 7) {
             badge
             VStack(alignment: .leading, spacing: 2) {
                 Text(sound.name)
-                    .font(.system(size: 13, weight: .semibold, design: .rounded))
+                    .font(.system(size: 11.5, weight: .semibold, design: .rounded))
                     .foregroundStyle(Theme.textPrimary)
                     .lineLimit(2)
                     .multilineTextAlignment(.leading)
@@ -68,16 +68,16 @@ struct SoundTile: View {
 
     private var badge: some View {
         ZStack {
-            RoundedRectangle(cornerRadius: 9, style: .continuous)
+            RoundedRectangle(cornerRadius: 7, style: .continuous)
                 .fill(tint.opacity(isPlaying ? 0.30 : 0.16))
-                .frame(width: 30, height: 30)
+                .frame(width: 24, height: 24)
             if let emoji = sound.emoji, !emoji.isEmpty {
-                Text(emoji).font(.system(size: 15))
+                Text(emoji).font(.system(size: 12))
             } else if isPlaying {
                 PlayingBars(color: tint)
             } else {
                 Text(sound.initials)
-                    .font(.system(size: 13, weight: .bold, design: .rounded))
+                    .font(.system(size: 11, weight: .bold, design: .rounded))
                     .foregroundStyle(tint)
             }
         }
@@ -128,7 +128,7 @@ struct SoundTile: View {
                             colors: [tint.opacity(0.28), .clear],
                             center: .topLeading,
                             startRadius: 0,
-                            endRadius: 150
+                            endRadius: 110
                         )
                     )
             }
@@ -148,8 +148,8 @@ struct SoundTile: View {
         if isPlaying {
             Capsule()
                 .fill(tint)
-                .frame(width: 26, height: 3)
-                .padding(.top, 5)
+                .frame(width: 20, height: 2.5)
+                .padding(.top, 4)
                 .shadow(color: tint.opacity(0.8), radius: 5)
         }
     }

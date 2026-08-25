@@ -57,9 +57,10 @@ enum Theme {
 
     // MARK: Geometry
 
-    static let tileRadius: CGFloat = 16
-    static let tileMinWidth: CGFloat = 176
-    static let tileSpacing: CGFloat = 12
+    static let tileRadius: CGFloat = 13
+    static let tileMinWidth: CGFloat = 132
+    static let tileHeight: CGFloat = 76
+    static let tileSpacing: CGFloat = 9
 }
 
 extension SoundTint {
