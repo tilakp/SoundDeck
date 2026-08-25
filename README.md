@@ -33,6 +33,18 @@ A fast, modern macOS soundboard. Drop in audio files, hit a key, hear them — i
 - Search, drag to reorder, rename
 - Colour tags and emoji icons per pad
 
+## Getting the deck into a call
+
+Out of the box, sounds play through your speakers — fine for you, inaudible to everyone else. To let other people hear them:
+
+1. Install a virtual audio device. [BlackHole](https://github.com/ExistentialAudio/BlackHole) is free: `brew install blackhole-2ch`
+2. In Sound Deck, click the output picker in the header and choose it under **Virtual**.
+3. In Zoom / Discord / Meet / OBS, set your **microphone** to that same device.
+
+That routes the deck into the call but replaces your voice. To have both, create a **Multi-Output** or **Aggregate Device** in Audio MIDI Setup combining your microphone and the virtual device, and select that as the call's input.
+
+Turn on **global hotkeys** from the menu bar icon and you can trigger sounds with <kbd>⌃</kbd><kbd>⌥</kbd> + a pad's key without ever leaving the call window.
+
 ## Requirements
 
 - macOS 14.6 or later
