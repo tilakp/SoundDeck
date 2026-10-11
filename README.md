@@ -62,6 +62,13 @@ To send your voice and the deck audio together, do the steps that follow.
 
 To play sounds without leaving the call window, enable global hotkeys. Click the menu bar icon. Set **Global hotkeys** to on. Press Control-Option and the key of a pad.
 
+## Install
+
+1. Download the latest `.dmg` file from [Releases](../../releases/latest).
+2. Open the file. Drag Sound Deck to the Applications folder.
+3. Open Sound Deck. The application is not notarized, so macOS stops it the first time. Close the warning.
+4. Open **System Settings › Privacy & Security**. Click **Open Anyway**. You do this step one time only.
+
 ## Requirements
 
 - macOS 14.6 or later
@@ -102,6 +109,10 @@ The application tries a security-scoped bookmark first. It uses a plain bookmark
 
 - Built with SwiftUI, AVFoundation and CoreAudio
 - The script `Tools/MakeIcon.swift` creates the application icon
+
+## License
+
+[MIT](LICENSE)
 
 ---
 
