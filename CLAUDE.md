@@ -161,3 +161,18 @@ cp <output-dir>/*.png SoundDeck/Assets.xcassets/AppIcon.appiconset/
 ```
 
 The asset catalog uses a second copy of the 32 pixel file with the name `icon_32x32 1.png`. This copy fills the 16 point 2x slot. The script writes this copy.
+
+## Bundled sounds
+
+A script creates the nine files in `sounds/`. The page `Tools/MakeSounds.html` holds a copy of the Web Audio synthesis of the demo on quietpixel.dev. The script opens this page in headless Chrome and writes 16-bit mono WAV files.
+
+To create the sound files, type the commands that follow.
+
+```bash
+node Tools/MakeSounds.mjs <output-dir>
+cp <output-dir>/*.wav sounds/
+```
+
+The list `bundledOrder` in `SoundLibrary.swift` sets the order of the pads. If you change a file name, change the list also.
+
+At start, `SoundLibrary` removes the pads of bundled files that are missing. It then adds the bundled sounds that are not in the deck. This keeps a library from an earlier version correct.

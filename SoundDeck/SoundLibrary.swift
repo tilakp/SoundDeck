@@ -26,6 +26,7 @@ final class SoundLibrary: ObservableObject {
     init() {
         if let loaded = store.load() {
             sounds = loaded
+            replaceMissingBundledSounds()
         } else {
             loadBundledSounds()
         }
@@ -154,8 +155,16 @@ final class SoundLibrary: ObservableObject {
 
     func save() { store.save(sounds) }
 
-    private func loadBundledSounds() {
-        guard let resourceURL = Bundle.main.resourceURL else { return }
+    /// The order of the bundled sounds on a new deck. It is the same as the web demo.
+    /// A bundled file that is not in this list goes after these files, in name order.
+    private static let bundledOrder = [
+        "Ba-dum-tss.wav", "Laser.wav", "Glass.wav", "Chime.wav", "Bike bell.wav",
+        "Whistle.wav", "Gong.wav", "Sad trombone.wav", "Applause.wav",
+    ]
+
+    /// The file names of the bundled sounds, in deck order.
+    private func bundledFileNames() -> [String] {
+        guard let resourceURL = Bundle.main.resourceURL else { return [] }
         let audioExtensions: Set<String> = ["wav", "aiff", "aif", "mp3", "m4a", "caf"]
         do {
             let files = try FileManager.default.contentsOfDirectory(
@@ -163,18 +172,42 @@ final class SoundLibrary: ObservableObject {
                 includingPropertiesForKeys: nil,
                 options: [.skipsHiddenFiles]
             )
-            let bundled = files
+            let rank = { (name: String) in Self.bundledOrder.firstIndex(of: name) ?? Self.bundledOrder.count }
+            return files
                 .filter { audioExtensions.contains($0.pathExtension.lowercased()) }
-                .sorted { $0.lastPathComponent < $1.lastPathComponent }
-            for (index, file) in bundled.enumerated() {
-                var item = SoundItem(name: file.lastPathComponent)
-                item.hotKey = index < 9 ? String(index + 1) : (index == 9 ? "0" : nil)
-                item.tint = SoundTint.allCases[(index % (SoundTint.allCases.count - 1)) + 1]
-                sounds.append(item)
-            }
-            save()
+                .map(\.lastPathComponent)
+                .sorted { (rank($0), $0) < (rank($1), $1) }
         } catch {
             print("[DEBUG] Could not load bundled sounds: \(error)")
+            return []
         }
+    }
+
+    private func loadBundledSounds() {
+        let names = bundledFileNames()
+        guard !names.isEmpty else { return }
+        for (index, name) in names.enumerated() {
+            var item = SoundItem(name: name)
+            item.hotKey = index < 9 ? String(index + 1) : (index == 9 ? "0" : nil)
+            item.tint = SoundTint.allCases[(index % (SoundTint.allCases.count - 1)) + 1]
+            sounds.append(item)
+        }
+        save()
+    }
+
+    /// An update can remove bundled files. Version 2.0.0 had different bundled sounds.
+    /// Remove the pads of the missing files. Then add the bundled sounds that are not in the deck.
+    /// The new pads go first, as on a new deck.
+    /// This occurs only when a pad points to a missing file. Thus a sound that the user removed does not come back.
+    private func replaceMissingBundledSounds() {
+        let names = bundledFileNames()
+        guard !names.isEmpty else { return }
+        let isMissing = { (item: SoundItem) in item.isBundled && !names.contains(item.name) }
+        guard sounds.contains(where: isMissing) else { return }
+        sounds.removeAll(where: isMissing)
+        let present = Set(sounds.filter(\.isBundled).map(\.name))
+        sounds.insert(contentsOf: names.filter { !present.contains($0) }.map { SoundItem(name: $0) }, at: 0)
+        print("[DEBUG] Replaced missing bundled sounds")
+        save()
     }
 }

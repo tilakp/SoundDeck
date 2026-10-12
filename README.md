@@ -109,6 +109,7 @@ The application tries a security-scoped bookmark first. It uses a plain bookmark
 
 - Built with SwiftUI, AVFoundation and CoreAudio
 - The script `Tools/MakeIcon.swift` creates the application icon
+- The script `Tools/MakeSounds.mjs` creates the nine bundled sounds. It uses the Web Audio synthesis of the [quietpixel.dev](https://quietpixel.dev) demo
 
 ## License
 
