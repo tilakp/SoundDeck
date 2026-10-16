@@ -246,7 +246,7 @@ final class AudioEngine: ObservableObject {
 
     func replayLast(in library: SoundLibrary) throws {
         guard let lastPlayedID,
-              let sound = library.sounds.first(where: { $0.id == lastPlayedID }) else { return }
+              let sound = library.sound(withID: lastPlayedID) else { return }
         try play(sound, in: library)
     }
 

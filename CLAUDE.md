@@ -37,7 +37,7 @@ To build the application, type the command that follows. This command builds the
 xcodebuild -project SoundDeck.xcodeproj -scheme SoundDeck -configuration Debug build
 ```
 
-To run all tests, type the command that follows. The two test targets contain only empty examples.
+To run all tests, type the command that follows. The target `SoundDeckTests` tests the store, the library, the decks and the deck files. The UI test target contains only empty examples.
 
 ```bash
 xcodebuild -project SoundDeck.xcodeproj -scheme SoundDeck -destination 'platform=macOS' test
@@ -74,9 +74,9 @@ The system attaches an app-scoped security bookmark to the code signature. An ad
 
 A plain bookmark cannot restore access in the sandbox. A sandboxed build with an ad-hoc signature loses all imported sounds at the next start.
 
-The type `BookmarkFlavor` is in `SoundItem.swift`. It tries a security-scoped bookmark first. It uses a plain bookmark only if the first operation fails. It records the type of each bookmark.
+The application copies each new import into the library directory. Thus new pads have no bookmark. At start, the library copies the files of pads from earlier builds. A pad keeps its bookmark only when its file is missing.
 
-You must resolve a bookmark with the same option that created it. The property `SoundItem.isSecurityScoped` holds this option.
+The type `BookmarkFlavor` is in `SoundItem.swift`. It refreshes the stale bookmarks of these old pads. You must resolve a bookmark with the same option that created it. The property `SoundItem.isSecurityScoped` holds this option.
 
 A build with a Team ID uses security-scoped bookmarks again. The file `SoundDeck.entitlements` lists the keys to add.
 
@@ -88,11 +88,19 @@ The data flows in one direction. The type `SoundLibrary` holds the contents of t
 
 This file holds the model and the type `BookmarkFlavor`.
 
+A pad has one of three sources. A bundled pad reads `Resources/<fileName>`. A copied pad reads `Sounds/<id>/<fileName>` in the library directory. An old pad reads its bookmark. The display name is `name`. A rename does not change `fileName`.
+
 The decoder reads each new field with `decodeIfPresent`. A strict decoder rejects an older library file. A rejected file deletes the deck of the user. Keep this method when you add a field.
+
+### Deck.swift
+
+A deck is a named list of pads. The keys 1 to 0 and the global hotkeys play the pads of the active deck only. Each deck has its own keys.
 
 ### SoundLibraryStore.swift
 
 This file writes JSON to `~/Library/Application Support/SoundDeck/library.json`. The write is atomic.
+
+Version 2 of the file holds the decks and the active deck. The store reads a version 1 file as one deck with the name "Main". The directory `Sounds/` holds the copied audio files. Tests give the store a temporary directory.
 
 Do not use `UserDefaults`. `UserDefaults` is a preferences store. A change to the sandbox status replaces the container. An earlier build lost its library for this reason.
 
@@ -100,7 +108,11 @@ The store keeps an unreadable file as `library-corrupt-*.json`. It does not over
 
 ### SoundLibrary.swift
 
-This file adds, removes, reorders and renames sounds. It also assigns hotkeys and does searches.
+This file adds, removes, reorders and renames sounds. It also assigns hotkeys and does searches. It adds, selects, renames and removes decks.
+
+The property `sounds` gives the pads of the active deck. The function `sound(withID:)` finds a pad in any deck. A pad from another deck can still play.
+
+When you remove a pad or a deck, the library deletes the copied files.
 
 The function `resolve()` saves a refreshed bookmark when macOS reports a stale bookmark.
 
@@ -115,6 +127,16 @@ The graph is:
 The engine attaches a voice at playback. The engine detaches the voice at retirement. Always use the function `retire()`. This function releases the security scope. It also clears the pad state after the last voice of a sound stops.
 
 The engine pauses when it is idle. This releases the output device.
+
+### DeckArchive.swift
+
+This file exports a deck to one `.sounddeck` file and imports it. The file is JSON. It holds the settings and the Base64 audio of each pad. An import gives each pad a new id. It keeps each copy in the directory of its pad, also when the file name has `..` in it.
+
+### Recorder.swift
+
+This file records from the default input device to an AAC file. It has its own `AVAudioEngine`. A mixer converts the input to mono or stereo. The main mixer is muted, so the microphone does not go to the speakers.
+
+The build setting `INFOPLIST_KEY_NSMicrophoneUsageDescription` holds the text of the permission prompt. Without it, macOS stops the application when it asks for the microphone.
 
 ### AudioDevice.swift
 
@@ -138,7 +160,9 @@ The surfaces are opaque. Do not use `.ultraThinMaterial`. On macOS a material sa
 
 ### Views
 
-The views are `ContentView`, `SoundTile`, `SoundInspector` and `MenuBarDeck`.
+The views are `ContentView`, `SoundTile`, `SoundInspector`, `RecorderSheet` and `MenuBarDeck`.
+
+The deck bar in `ContentView` shows the decks, the menu for new and imported decks, and the Record button. The context menu of a deck has Rename, Export and Delete.
 
 The type `SoundDeckApp` owns `SoundLibrary` and `AudioEngine`. Therefore the window and the menu bar use the same deck.
 

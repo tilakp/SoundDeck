@@ -13,6 +13,20 @@ struct MenuBarDeck: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             header
+            if library.decks.count > 1 {
+                Picker("Deck", selection: Binding(
+                    get: { library.activeDeckID },
+                    set: { library.selectDeck($0) }
+                )) {
+                    ForEach(library.decks) { deck in
+                        Text(deck.name).tag(deck.id)
+                    }
+                }
+                .labelsHidden()
+                .controlSize(.small)
+                .padding(.horizontal, 12)
+                .padding(.bottom, 8)
+            }
             if let error = engine.lastError {
                 Text(error)
                     .font(.system(size: 10.5, design: .rounded))

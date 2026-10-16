@@ -41,6 +41,11 @@ Sound Deck is a soundboard for macOS. Add your audio files to the deck. Press a 
 - You can drag a pad to a new position.
 - You can rename a pad.
 - You can set a colour and an emoji for each pad.
+- You can make more than one deck, for example "Podcast" and "Stream". The keys play the pads of the active deck.
+- You can move a pad to another deck.
+- The deck keeps a copy of each file that you add. If you move or delete the original file, the pad still plays.
+- You can export a deck to one `.sounddeck` file and import it on another Mac.
+- You can record a new pad from your microphone.
 
 ## Send the audio to a call
 

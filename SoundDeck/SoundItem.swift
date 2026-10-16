@@ -27,10 +27,13 @@ struct SoundItem: Identifiable, Codable, Equatable {
     let id: UUID
     /// Display name. Defaults to the file name but is renamable.
     var name: String
-    /// The name of the file. A rename does not change it. A bundled sound uses it to find its file.
-    let fileName: String
+    /// The name of the file. A rename does not change it. A bundled sound and a copied
+    /// sound use it to find their file.
+    var fileName: String
     var bookmarkData: Data?
     let isBundled: Bool
+    /// True when the file is a copy in the library directory, at `<id>/<fileName>`.
+    var isCopied: Bool
     /// Whether `bookmarkData` was created with `.withSecurityScope`. A bookmark must
     /// be resolved with the same option it was created with.
     var isSecurityScoped: Bool
@@ -48,11 +51,29 @@ struct SoundItem: Identifiable, Codable, Equatable {
 
     // For bundled
     init(name: String) {
+        self.init(name: name, isBundled: true)
+    }
+
+    // For a copy in the library directory
+    init(copiedFileName fileName: String) {
+        self.init(name: fileName, isBundled: false)
+        self.isCopied = true
+    }
+
+    // For imported
+    init(name: String, bookmarkData: Data, isSecurityScoped: Bool) {
+        self.init(name: name, isBundled: false)
+        self.bookmarkData = bookmarkData
+        self.isSecurityScoped = isSecurityScoped
+    }
+
+    private init(name: String, isBundled: Bool) {
         self.id = UUID()
         self.name = name
         self.fileName = name
         self.bookmarkData = nil
-        self.isBundled = true
+        self.isBundled = isBundled
+        self.isCopied = false
         self.isSecurityScoped = false
         self.volume = 1
         self.loops = false
@@ -61,13 +82,6 @@ struct SoundItem: Identifiable, Codable, Equatable {
         self.tint = .none
         self.emoji = nil
         self.hotKey = nil
-    }
-
-    // For imported
-    init(name: String, bookmarkData: Data, isSecurityScoped: Bool) {
-        self.init(name: name)
-        self.bookmarkData = bookmarkData
-        self.isSecurityScoped = isSecurityScoped
     }
 
     // Every added field is decoded leniently. Libraries written by earlier builds must
@@ -79,6 +93,7 @@ struct SoundItem: Identifiable, Codable, Equatable {
         fileName = try c.decodeIfPresent(String.self, forKey: .fileName) ?? name
         bookmarkData = try c.decodeIfPresent(Data.self, forKey: .bookmarkData)
         isBundled = try c.decode(Bool.self, forKey: .isBundled)
+        isCopied = try c.decodeIfPresent(Bool.self, forKey: .isCopied) ?? false
         isSecurityScoped = try c.decodeIfPresent(Bool.self, forKey: .isSecurityScoped) ?? false
         volume = try c.decodeIfPresent(Float.self, forKey: .volume) ?? 1
         loops = try c.decodeIfPresent(Bool.self, forKey: .loops) ?? false
@@ -95,7 +110,18 @@ struct SoundItem: Identifiable, Codable, Equatable {
         return letters.isEmpty ? "♪" : String(letters.prefix(1)).uppercased()
     }
 
-    func resolve() -> SoundResolution? {
+    /// The location of the copy, if `isCopied` is true.
+    func copyURL(in directory: URL) -> URL {
+        directory
+            .appendingPathComponent(id.uuidString, isDirectory: true)
+            .appendingPathComponent(fileName)
+    }
+
+    /// `copies` is the directory that holds the copied sounds.
+    func resolve(copies: URL) -> SoundResolution? {
+        if isCopied {
+            return SoundResolution(url: copyURL(in: copies), refreshedBookmark: nil, needsSecurityScope: false)
+        }
         if isBundled {
             guard let resourceURL = Bundle.main.resourceURL else { return nil }
             return SoundResolution(
@@ -129,34 +155,14 @@ struct SoundItem: Identifiable, Codable, Equatable {
     }
 }
 
-/// Chooses between security-scoped and plain bookmarks at runtime.
-///
-/// Security-scoped bookmarks are the right tool for a sandboxed app, but creating one
-/// binds it to the app's code-signing identity. An ad-hoc signed build (no Developer
-/// Team ID) has no stable identity to bind to, and creation fails with
-/// NSCocoaErrorDomain 256 even when the file is perfectly readable. Try the scoped
-/// form first and fall back to a plain bookmark, which is sufficient unsandboxed.
+/// Refreshes the bookmarks of pads from earlier builds. New imports are copies and have no bookmark.
+/// A bookmark must be made again with the same option that made it.
 enum BookmarkFlavor {
-    struct Result {
-        let data: Data
-        let isSecurityScoped: Bool
-    }
-
     static func makeBookmark(for url: URL, scoped: Bool) throws -> Data {
         try url.bookmarkData(
             options: scoped ? [.withSecurityScope] : [],
             includingResourceValuesForKeys: nil,
             relativeTo: nil
         )
-    }
-
-    static func create(for url: URL) throws -> Result {
-        do {
-            return Result(data: try makeBookmark(for: url, scoped: true), isSecurityScoped: true)
-        } catch {
-            let ns = error as NSError
-            print("[DEBUG] Security-scoped bookmark unavailable (\(ns.domain) \(ns.code)); using a plain bookmark")
-            return Result(data: try makeBookmark(for: url, scoped: false), isSecurityScoped: false)
-        }
     }
 }

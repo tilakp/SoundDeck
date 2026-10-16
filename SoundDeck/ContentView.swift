@@ -12,6 +12,10 @@ struct ContentView: View {
     @State private var alertMessage = ""
     @State private var isDropTargeted = false
     @State private var inspecting: SoundItem?
+    @State private var recording = false
+    @State private var renamingDeckID: UUID?
+    @State private var deckName = ""
+    @State private var deletingDeck: Deck?
 
     private static let audioExtensions: Set<String> = [
         "wav", "aiff", "aif", "mp3", "m4a", "aac", "caf", "flac", "ogg", "wma"
@@ -24,6 +28,7 @@ struct ContentView: View {
             VStack(spacing: 14) {
                 header
                 monitor
+                deckBar
                 deck
                 footer
             }
@@ -59,6 +64,31 @@ struct ContentView: View {
             SoundInspector(sound: sound, library: library, engine: engine) {
                 inspecting = nil
             }
+        }
+        .sheet(isPresented: $recording) {
+            RecorderSheet(library: library) { recording = false }
+        }
+        .alert("Rename Deck", isPresented: Binding(
+            get: { renamingDeckID != nil },
+            set: { if !$0 { renamingDeckID = nil } }
+        )) {
+            TextField("Name", text: $deckName)
+            Button("Rename") {
+                if let id = renamingDeckID { library.renameDeck(id, to: deckName) }
+            }
+            Button("Cancel", role: .cancel) {}
+        }
+        .confirmationDialog(
+            "Delete “\(deletingDeck?.name ?? "")”?",
+            isPresented: Binding(get: { deletingDeck != nil }, set: { if !$0 { deletingDeck = nil } }),
+            presenting: deletingDeck
+        ) { deck in
+            Button("Delete Deck", role: .destructive) {
+                for sound in deck.sounds { engine.stop(sound, fade: false) }
+                library.removeDeck(deck.id)
+            }
+        } message: { deck in
+            Text("This removes the deck and its \(deck.sounds.count) pads. You cannot undo this.")
         }
     }
 
@@ -252,7 +282,7 @@ struct ContentView: View {
 
     private var nowPlayingTitle: String {
         guard let id = engine.focusedSoundID,
-              let sound = library.sounds.first(where: { $0.id == id }) else {
+              let sound = library.sound(withID: id) else {
             return "Nothing playing"
         }
         return sound.name
@@ -260,8 +290,93 @@ struct ContentView: View {
 
     private var focusedTint: Color {
         guard let id = engine.focusedSoundID,
-              let sound = library.sounds.first(where: { $0.id == id }) else { return Theme.accent }
+              let sound = library.sound(withID: id) else { return Theme.accent }
         return sound.tint.color
+    }
+
+    // MARK: - Deck bar
+
+    /// The decks, with the Record button at the end. Keys play pads of the active deck only.
+    private var deckBar: some View {
+        HStack(spacing: 6) {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 6) {
+                    ForEach(library.decks) { deck in deckChip(deck) }
+                    Menu {
+                        Button("New Deck") {
+                            let deck = library.addDeck(named: "Deck")
+                            startRenaming(deck)
+                        }
+                        Button("Import Deck…", action: importDeck)
+                    } label: {
+                        Image(systemName: "plus")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(Theme.textSecondary)
+                            .frame(width: 26, height: 26)
+                            .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(Theme.surface))
+                    }
+                    .menuStyle(.borderlessButton)
+                    .menuIndicator(.hidden)
+                    .fixedSize()
+                    .help("New or imported deck")
+                }
+            }
+
+            ChromeButton(title: "Record", icon: "mic.fill") {
+                recording = true
+            }
+        }
+    }
+
+    private func deckChip(_ deck: Deck) -> some View {
+        let isActive = deck.id == library.activeDeckID
+        return Button {
+            library.selectDeck(deck.id)
+        } label: {
+            Text(deck.name)
+                .font(.system(size: 12, weight: isActive ? .semibold : .medium, design: .rounded))
+                .foregroundStyle(isActive ? Theme.textPrimary : Theme.textSecondary)
+                .lineLimit(1)
+                .padding(.horizontal, 11)
+                .padding(.vertical, 6)
+                .background(
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .fill(isActive ? Theme.surfaceRaised : Color.clear)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                .strokeBorder(isActive ? Theme.strokeStrong : Theme.stroke, lineWidth: 1)
+                        )
+                )
+        }
+        .buttonStyle(.plain)
+        .contextMenu {
+            Button("Rename…") { startRenaming(deck) }
+            Button("Export…") { export(deck) }
+            Divider()
+            Button("Delete…", role: .destructive) { deletingDeck = deck }
+                .disabled(library.decks.count < 2)
+        }
+    }
+
+    private func startRenaming(_ deck: Deck) {
+        deckName = deck.name
+        renamingDeckID = deck.id
+    }
+
+    private func export(_ deck: Deck) {
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [DeckArchive.contentType]
+        panel.nameFieldStringValue = "\(deck.name).\(DeckArchive.fileExtension)"
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        attempt { try library.exportArchive(of: deck.id).write(to: url, options: .atomic) }
+    }
+
+    private func importDeck() {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [DeckArchive.contentType]
+        panel.allowsMultipleSelection = false
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        attempt { try library.importArchive(Data(contentsOf: url)) }
     }
 
     // MARK: - Deck
@@ -292,7 +407,11 @@ struct ContentView: View {
                                     library.remove(sound)
                                 },
                                 update: { mutate in library.update(sound, mutate) },
-                                openInspector: { inspecting = sound }
+                                openInspector: { inspecting = sound },
+                                moveTargets: library.decks
+                                    .filter { $0.id != library.activeDeckID }
+                                    .map { (id: $0.id, name: $0.name) },
+                                moveToDeck: { library.moveSound(sound, toDeck: $0) }
                             )
                             .onDrag {
                                 NSItemProvider(object: sound.id.uuidString as NSString)

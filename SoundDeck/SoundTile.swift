@@ -10,6 +10,9 @@ struct SoundTile: View {
     let remove: () -> Void
     let update: ((inout SoundItem) -> Void) -> Void
     let openInspector: () -> Void
+    /// The other decks. The context menu can move the pad to one of them.
+    let moveTargets: [(id: UUID, name: String)]
+    let moveToDeck: (UUID) -> Void
 
     @State private var hovering = false
     @State private var pressed = false
@@ -194,6 +197,14 @@ struct SoundTile: View {
             get: { sound.loops },
             set: { newValue in update { $0.loops = newValue } }
         ))
+
+        if !moveTargets.isEmpty {
+            Menu("Move to Deck") {
+                ForEach(moveTargets, id: \.id) { target in
+                    Button(target.name) { moveToDeck(target.id) }
+                }
+            }
+        }
 
         Divider()
         Button("Remove", role: .destructive) { remove() }
