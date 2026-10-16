@@ -191,7 +191,10 @@ final class SoundLibrary: ObservableObject {
 
     /// Uses 1 to 9, then 0, then letters. This matches the layout order of the deck.
     private static func nextAvailableHotKey(in sounds: [SoundItem]) -> String? {
-        let candidates = (1...9).map(String.init) + ["0"] + "abcdefghijklmnopqrstuvwxyz".map(String.init)
+        // Separate statements with types. The Swift 6.1 compiler (Xcode 16) cannot check one long expression in time.
+        let digits: [String] = (1...9).map { String($0) } + ["0"]
+        let letters: [String] = "abcdefghijklmnopqrstuvwxyz".map { String($0) }
+        let candidates = digits + letters
         let taken = Set(sounds.compactMap { $0.hotKey?.lowercased() })
         return candidates.first { !taken.contains($0) }
     }
