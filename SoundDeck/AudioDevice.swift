@@ -43,6 +43,20 @@ enum AudioDeviceList {
         return status == noErr ? deviceID : nil
     }
 
+    /// The name of the default input device, or nil if there is no input device.
+    static func defaultInputDeviceName() -> String? {
+        var address = AudioObjectPropertyAddress(
+            mSelector: kAudioHardwarePropertyDefaultInputDevice,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        var deviceID = AudioDeviceID(0)
+        var size = UInt32(MemoryLayout<AudioDeviceID>.size)
+        let status = AudioObjectGetPropertyData(AudioObjectID(kAudioObjectSystemObject), &address, 0, nil, &size, &deviceID)
+        guard status == noErr, deviceID != kAudioObjectUnknown else { return nil }
+        return stringProperty(kAudioObjectPropertyName, of: deviceID)
+    }
+
     /// Calls `handler` on the main queue when a device is added or removed, or when the
     /// default output changes. The listeners stay for the life of the application.
     static func observeChanges(_ handler: @escaping () -> Void) {
