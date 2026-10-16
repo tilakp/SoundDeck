@@ -29,6 +29,7 @@ struct SoundDeckApp: App {
         _engine = StateObject(wrappedValue: engine)
         _hotKeys = StateObject(wrappedValue: HotKeyBinder.live(library: library, engine: engine))
         DeckCommands.shared = DeckCommands(library: library, engine: engine)
+        if !Self.isRunningTests { TwitchChat.shared.restart() }
     }
 
     /// True when the app is the host of the unit tests.
