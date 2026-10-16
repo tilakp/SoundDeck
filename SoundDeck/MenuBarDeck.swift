@@ -24,16 +24,16 @@ struct MenuBarDeck: View {
                 }
                 .labelsHidden()
                 .controlSize(.small)
-                .padding(.horizontal, 12)
-                .padding(.bottom, 8)
+                .padding(.horizontal, Theme.Spacing.m)
+                .padding(.bottom, Theme.Spacing.s)
             }
             if let error = engine.lastError {
                 Text(error)
-                    .font(.system(size: 10.5, design: .rounded))
+                    .font(Theme.Font.caption())
                     .foregroundStyle(SoundTint.rose.color)
                     .fixedSize(horizontal: false, vertical: true)
-                    .padding(.horizontal, 12)
-                    .padding(.bottom, 8)
+                    .padding(.horizontal, Theme.Spacing.m)
+                    .padding(.bottom, Theme.Spacing.s)
             }
             Divider().opacity(0.4)
             soundList
@@ -45,12 +45,12 @@ struct MenuBarDeck: View {
     }
 
     private var header: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: Theme.Spacing.s) {
             Image(systemName: "waveform")
-                .font(.system(size: 12, weight: .bold))
+                .font(Theme.Font.body(.bold))
                 .foregroundStyle(Theme.accentBright)
             Text("Sound Deck")
-                .font(.system(size: 12.5, weight: .bold, design: .rounded))
+                .font(Theme.Font.body(.bold))
                 .foregroundStyle(Theme.textPrimary)
             Spacer()
             if !engine.playingIDs.isEmpty {
@@ -58,16 +58,16 @@ struct MenuBarDeck: View {
                     engine.stopAll()
                 } label: {
                     Image(systemName: "stop.fill")
-                        .font(.system(size: 10, weight: .bold))
+                        .font(Theme.Font.caption(.bold))
                         .foregroundStyle(Theme.textPrimary)
-                        .padding(5)
+                        .padding(Theme.Spacing.xs)
                         .background(Circle().fill(Color.white.opacity(0.13)))
                 }
                 .buttonStyle(.plain)
             }
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
+        .padding(.horizontal, Theme.Spacing.m)
+        .padding(.vertical, Theme.Spacing.m)
     }
 
     private var soundList: some View {
@@ -84,20 +84,20 @@ struct MenuBarDeck: View {
                     }
                 }
             }
-            .padding(.horizontal, 6)
-            .padding(.vertical, 5)
+            .padding(.horizontal, Theme.Spacing.s)
+            .padding(.vertical, Theme.Spacing.xs)
         }
         .frame(maxHeight: 300)
     }
 
     private var controls: some View {
-        VStack(alignment: .leading, spacing: 9) {
+        VStack(alignment: .leading, spacing: Theme.Spacing.s) {
             Toggle(isOn: $globalHotKeys) {
                 VStack(alignment: .leading, spacing: 1) {
                     Text("Global hotkeys")
-                        .font(.system(size: 11.5, weight: .medium, design: .rounded))
+                        .font(Theme.Font.body(.medium))
                     Text("\(GlobalHotKeys.modifierDescription) + a sound's key, from any app")
-                        .font(.system(size: 9.5, design: .rounded))
+                        .font(Theme.Font.caption())
                         .foregroundStyle(Theme.textTertiary)
                 }
             }
@@ -109,9 +109,9 @@ struct MenuBarDeck: View {
                 rebind()
             }
 
-            HStack(spacing: 7) {
+            HStack(spacing: Theme.Spacing.s) {
                 Image(systemName: "speaker.wave.2.fill")
-                    .font(.system(size: 10))
+                    .font(Theme.Font.caption())
                     .foregroundStyle(Theme.textTertiary)
                 Slider(value: $engine.masterVolume, in: 0...1)
                     .controlSize(.mini)
@@ -123,16 +123,16 @@ struct MenuBarDeck: View {
                     NSApp.activate(ignoringOtherApps: true)
                     NSApp.windows.first(where: { $0.canBecomeMain })?.makeKeyAndOrderFront(nil)
                 }
-                .font(.system(size: 11, design: .rounded))
+                .font(Theme.Font.caption())
                 Spacer()
                 Button("Quit") { NSApp.terminate(nil) }
-                    .font(.system(size: 11, design: .rounded))
+                    .font(Theme.Font.caption())
             }
             .buttonStyle(.plain)
             .foregroundStyle(Theme.textSecondary)
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
+        .padding(.horizontal, Theme.Spacing.m)
+        .padding(.vertical, Theme.Spacing.m)
     }
 }
 
@@ -146,36 +146,36 @@ private struct MenuBarRow: View {
 
     var body: some View {
         Button(action: play) {
-            HStack(spacing: 8) {
+            HStack(spacing: Theme.Spacing.s) {
                 ZStack {
-                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    RoundedRectangle(cornerRadius: Theme.Radius.small, style: .continuous)
                         .fill(sound.tint.color.opacity(isPlaying ? 0.32 : 0.16))
                         .frame(width: 22, height: 22)
                     if let emoji = sound.emoji, !emoji.isEmpty {
-                        Text(emoji).font(.system(size: 11))
+                        Text(emoji).font(Theme.Font.caption())
                     } else if isPlaying {
                         PlayingBars(color: sound.tint.color)
                             .scaleEffect(0.75)
                     } else {
                         Text(sound.initials)
-                            .font(.system(size: 10, weight: .bold, design: .rounded))
+                            .font(Theme.Font.caption(.bold))
                             .foregroundStyle(sound.tint.color)
                     }
                 }
                 Text(sound.name)
-                    .font(.system(size: 11.5, design: .rounded))
+                    .font(Theme.Font.padName.weight(.regular))
                     .foregroundStyle(Theme.textPrimary)
                     .lineLimit(1)
                     .truncationMode(.middle)
-                Spacer(minLength: 4)
+                Spacer(minLength: Theme.Spacing.xs)
                 if let key = sound.hotKey {
                     KeyCap(key: showsGlobalHint ? "\(GlobalHotKeys.modifierDescription)\(key.uppercased())" : key)
                 }
             }
-            .padding(.horizontal, 7)
-            .padding(.vertical, 5)
+            .padding(.horizontal, Theme.Spacing.s)
+            .padding(.vertical, Theme.Spacing.xs)
             .background(
-                RoundedRectangle(cornerRadius: 7, style: .continuous)
+                RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous)
                     .fill(hovering ? Theme.surfaceHover : Color.clear)
             )
         }

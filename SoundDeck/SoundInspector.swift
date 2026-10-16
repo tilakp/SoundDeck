@@ -36,14 +36,14 @@ struct SoundInspector: View {
     private let emojiChoices = ["", "🔔", "💥", "🎺", "🥁", "⚡️", "🎉", "😂", "👏", "🚨", "💧", "🐸", "🎸", "📣", "🛎️"]
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: Theme.Spacing.l) {
             title
             trimSection
             playbackSection
             settingsGrid
             footer
         }
-        .padding(20)
+        .padding(Theme.Spacing.xl)
         .frame(width: 460)
         .background(Theme.backdrop)
         .onAppear(perform: load)
@@ -52,35 +52,35 @@ struct SoundInspector: View {
     // MARK: Sections
 
     private var title: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: Theme.Spacing.m) {
             ZStack {
-                RoundedRectangle(cornerRadius: 9, style: .continuous)
+                RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous)
                     .fill(tint.color.opacity(0.20))
                     .frame(width: 32, height: 32)
                 if emoji.isEmpty {
                     Text(sound.initials)
-                        .font(.system(size: 14, weight: .bold, design: .rounded))
+                        .font(Theme.Font.title(.bold))
                         .foregroundStyle(tint.color)
                 } else {
-                    Text(emoji).font(.system(size: 16))
+                    Text(emoji).font(Theme.Font.title(.regular))
                 }
             }
             TextField("Name", text: $name)
                 .textFieldStyle(.plain)
-                .font(.system(size: 15, weight: .semibold, design: .rounded))
+                .font(Theme.Font.title())
                 .foregroundStyle(Theme.textPrimary)
         }
     }
 
     private var trimSection: some View {
-        VStack(alignment: .leading, spacing: 7) {
+        VStack(alignment: .leading, spacing: Theme.Spacing.s) {
             HStack {
                 Text("Trim")
-                    .font(.system(size: 11, weight: .semibold, design: .rounded))
+                    .font(Theme.Font.caption(.semibold))
                     .foregroundStyle(Theme.textSecondary)
                 Spacer()
                 Text("\(format(trimStart)) to \(format(trimEnd))  ·  \(format(max(0, trimEnd - trimStart))) long")
-                    .font(.system(size: 10, design: .monospaced))
+                    .font(Theme.Font.caption().monospacedDigit())
                     .foregroundStyle(Theme.textTertiary)
             }
 
@@ -93,13 +93,13 @@ struct SoundInspector: View {
             )
             .frame(height: 66)
 
-            HStack(spacing: 8) {
+            HStack(spacing: Theme.Spacing.s) {
                 Button("Reset") {
                     trimStart = 0
                     trimEnd = duration
                 }
                 .buttonStyle(.plain)
-                .font(.system(size: 10.5, design: .rounded))
+                .font(Theme.Font.caption())
                 .foregroundStyle(Theme.textTertiary)
 
                 Spacer()
@@ -107,9 +107,9 @@ struct SoundInspector: View {
                 Button {
                     previewTrimmed()
                 } label: {
-                    HStack(spacing: 4) {
-                        Image(systemName: "play.fill").font(.system(size: 9))
-                        Text("Preview").font(.system(size: 10.5, weight: .medium, design: .rounded))
+                    HStack(spacing: Theme.Spacing.xs) {
+                        Image(systemName: "play.fill").font(Theme.Font.caption())
+                        Text("Preview").font(Theme.Font.caption(.medium))
                     }
                     .foregroundStyle(Theme.accentBright)
                 }
@@ -118,14 +118,14 @@ struct SoundInspector: View {
 
             if let previewError {
                 Text(previewError)
-                    .font(.system(size: 10.5, design: .rounded))
+                    .font(Theme.Font.caption())
                     .foregroundStyle(SoundTint.rose.color)
             }
         }
     }
 
     private var playbackSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: Theme.Spacing.m) {
             Picker("", selection: $playMode) {
                 ForEach(PlayMode.allCases) { mode in Text(mode.label).tag(mode) }
             }
@@ -133,7 +133,7 @@ struct SoundInspector: View {
             .labelsHidden()
             .help("Play over: each press adds a sound. Restart: plays from the start. Toggle: the next press stops it. Hold: plays while you hold the key.")
 
-            HStack(spacing: 14) {
+            HStack(spacing: Theme.Spacing.l) {
                 Picker("Choke group", selection: $chokeGroup) {
                     Text("No group").tag(0)
                     ForEach(1...4, id: \.self) { group in Text("Group \(group)").tag(group) }
@@ -144,7 +144,7 @@ struct SoundInspector: View {
                 .help("A pad stops the other pads in its group.")
 
                 Toggle(isOn: $ducksOthers) {
-                    Text("Duck other pads").font(.system(size: 11.5, design: .rounded))
+                    Text("Duck other pads").font(Theme.Font.body())
                 }
                 .toggleStyle(.switch)
                 .controlSize(.mini)
@@ -152,11 +152,11 @@ struct SoundInspector: View {
                 .help("While this pad plays, the other pads go down by 12 dB.")
             }
 
-            HStack(spacing: 16) {
+            HStack(spacing: Theme.Spacing.l) {
                 labeledSlider("Fade in", value: $fadeIn, in: 0...2, text: String(format: "%.2f s", fadeIn))
                 labeledSlider("Fade out", value: $fadeOut, in: 0...2, text: String(format: "%.2f s", fadeOut))
             }
-            HStack(spacing: 16) {
+            HStack(spacing: Theme.Spacing.l) {
                 labeledSlider("Pitch", value: $pitch, in: -12...12, step: 1, text: String(format: "%+.0f st", pitch))
                 labeledSlider("Speed", value: $speed, in: 0.5...2, text: String(format: "%.2fx", speed))
             }
@@ -165,9 +165,9 @@ struct SoundInspector: View {
 
     private func labeledSlider(_ title: String, value: Binding<Double>, in range: ClosedRange<Double>,
                                step: Double? = nil, text: String) -> some View {
-        HStack(spacing: 6) {
+        HStack(spacing: Theme.Spacing.s) {
             Text(title)
-                .font(.system(size: 10.5, design: .rounded))
+                .font(Theme.Font.caption())
                 .foregroundStyle(Theme.textSecondary)
                 .frame(width: 48, alignment: .leading)
             Group {
@@ -180,17 +180,17 @@ struct SoundInspector: View {
             .controlSize(.small)
             .tint(tint.color)
             Text(text)
-                .font(.system(size: 10, design: .monospaced))
+                .font(Theme.Font.caption().monospacedDigit())
                 .foregroundStyle(Theme.textTertiary)
                 .frame(width: 44, alignment: .trailing)
         }
     }
 
     private var settingsGrid: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 8) {
+        VStack(alignment: .leading, spacing: Theme.Spacing.m) {
+            HStack(spacing: Theme.Spacing.s) {
                 Image(systemName: "speaker.wave.2.fill")
-                    .font(.system(size: 11))
+                    .font(Theme.Font.caption())
                     .foregroundStyle(Theme.textTertiary)
                     .frame(width: 16)
                 Slider(value: $volume, in: 0...1)
@@ -201,21 +201,21 @@ struct SoundInspector: View {
                         engine.setVolume(newValue, for: sound.id)
                     }
                 Text("\(Int(volume * 100))%")
-                    .font(.system(size: 10, design: .monospaced))
+                    .font(Theme.Font.caption().monospacedDigit())
                     .foregroundStyle(Theme.textTertiary)
                     .frame(width: 34, alignment: .trailing)
             }
 
-            HStack(spacing: 14) {
+            HStack(spacing: Theme.Spacing.l) {
                 Toggle(isOn: $loops) {
-                    Text("Loop").font(.system(size: 11.5, design: .rounded))
+                    Text("Loop").font(Theme.Font.body())
                 }
                 .toggleStyle(.switch)
                 .controlSize(.mini)
                 .tint(tint.color)
 
                 Toggle(isOn: $matchesLoudness) {
-                    Text("Match loudness").font(.system(size: 11.5, design: .rounded))
+                    Text("Match loudness").font(Theme.Font.body())
                 }
                 .toggleStyle(.switch)
                 .controlSize(.mini)
@@ -235,7 +235,7 @@ struct SoundInspector: View {
                 .controlSize(.small)
             }
 
-            HStack(spacing: 6) {
+            HStack(spacing: Theme.Spacing.s) {
                 ForEach(SoundTint.allCases) { option in
                     Button {
                         tint = option
@@ -372,94 +372,5 @@ struct SoundInspector: View {
         guard seconds.isFinite else { return "0:00" }
         let whole = Int(seconds)
         return String(format: "%d:%02d.%d", whole / 60, whole % 60, Int((seconds - Double(whole)) * 10))
-    }
-}
-
-/// Waveform with two draggable trim handles and a dimmed region outside them.
-private struct TrimTrack: View {
-    let samples: [Float]?
-    let duration: Double
-    @Binding var start: Double
-    @Binding var end: Double
-    let tint: Color
-
-    private static let track = "TrimTrack"
-
-    var body: some View {
-        GeometryReader { geometry in
-            let width = geometry.size.width
-            let startX = position(start, in: width)
-            let endX = position(end, in: width)
-
-            ZStack(alignment: .leading) {
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .fill(Theme.surface)
-
-                Group {
-                    if let samples {
-                        WaveformView(samples: samples, progress: 0, tint: Theme.textTertiary)
-                    } else {
-                        WaveformPlaceholder()
-                    }
-                }
-                .padding(.horizontal, 6)
-
-                // Dim everything outside the selection.
-                Rectangle()
-                    .fill(.black.opacity(0.55))
-                    .frame(width: max(0, startX))
-                Rectangle()
-                    .fill(.black.opacity(0.55))
-                    .frame(width: max(0, width - endX))
-                    .offset(x: endX)
-
-                Rectangle()
-                    .fill(tint.opacity(0.10))
-                    .frame(width: max(0, endX - startX))
-                    .offset(x: startX)
-
-                handle(at: startX, tint: tint) { newX in
-                    start = min(max(0, time(newX, in: width)), max(0, end - 0.05))
-                }
-                handle(at: endX, tint: tint) { newX in
-                    end = max(min(duration, time(newX, in: width)), min(duration, start + 0.05))
-                }
-            }
-            // The handles read their drag position in this space, not in their own frame.
-            .coordinateSpace(name: Self.track)
-            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .strokeBorder(Theme.stroke, lineWidth: 1)
-            )
-        }
-    }
-
-    private func handle(at x: CGFloat, tint: Color, move: @escaping (CGFloat) -> Void) -> some View {
-        Capsule()
-            .fill(tint)
-            .frame(width: 4)
-            .overlay(
-                Capsule()
-                    .fill(tint)
-                    .frame(width: 12)
-                    .opacity(0.001) // widen the hit target without showing it
-            )
-            .shadow(color: tint.opacity(0.7), radius: 4)
-            .offset(x: x - 2)
-            .gesture(
-                DragGesture(minimumDistance: 0, coordinateSpace: .named(Self.track))
-                    .onChanged { value in move(value.location.x) }
-            )
-    }
-
-    private func position(_ time: Double, in width: CGFloat) -> CGFloat {
-        guard duration > 0 else { return 0 }
-        return CGFloat(time / duration) * width
-    }
-
-    private func time(_ x: CGFloat, in width: CGFloat) -> Double {
-        guard width > 0 else { return 0 }
-        return Double(x / width) * duration
     }
 }
