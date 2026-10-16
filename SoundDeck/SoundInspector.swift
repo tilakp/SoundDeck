@@ -3,6 +3,9 @@ import SwiftUI
 
 /// Per-sound settings: name, trim window, gain, loop, colour, icon and hotkey.
 ///
+/// The settings are in groups: Key, Look, Behaviour and Sound. The rarely used shape
+/// values (fades, pitch and speed) are in a closed "Shape" group.
+///
 /// Trim exists because the useful part of a clip is often two seconds buried inside a
 /// thirty second download. Handles are dragged directly on the waveform rather than
 /// typed as numbers, which is how every audio tool does it and is far quicker.
@@ -26,6 +29,7 @@ struct SoundInspector: View {
     @State private var tint: SoundTint = .none
     @State private var emoji: String = ""
     @State private var hotKey: String = ""
+    @State private var showsShape = false
 
     @State private var samples: [Float]?
     @State private var duration: Double = 0
@@ -39,7 +43,6 @@ struct SoundInspector: View {
         VStack(alignment: .leading, spacing: Theme.Spacing.l) {
             title
             trimSection
-            playbackSection
             settingsGrid
             footer
         }
@@ -65,6 +68,7 @@ struct SoundInspector: View {
                     Text(emoji).font(Theme.Font.title(.regular))
                 }
             }
+            .accessibilityHidden(true)
             TextField("Name", text: $name)
                 .textFieldStyle(.plain)
                 .font(Theme.Font.title())
@@ -74,16 +78,6 @@ struct SoundInspector: View {
 
     private var trimSection: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.s) {
-            HStack {
-                Text("Trim")
-                    .font(Theme.Font.caption(.semibold))
-                    .foregroundStyle(Theme.textSecondary)
-                Spacer()
-                Text("\(format(trimStart)) to \(format(trimEnd))  ·  \(format(max(0, trimEnd - trimStart))) long")
-                    .font(Theme.Font.caption().monospacedDigit())
-                    .foregroundStyle(Theme.textTertiary)
-            }
-
             TrimTrack(
                 samples: samples,
                 duration: duration,
@@ -93,7 +87,13 @@ struct SoundInspector: View {
             )
             .frame(height: 66)
 
-            HStack(spacing: Theme.Spacing.s) {
+            HStack(spacing: Theme.Spacing.m) {
+                Text("\(format(trimStart)) to \(format(trimEnd))  ·  \(format(max(0, trimEnd - trimStart))) long")
+                    .font(Theme.Font.caption().monospacedDigit())
+                    .foregroundStyle(Theme.textTertiary)
+
+                Spacer()
+
                 Button("Reset") {
                     trimStart = 0
                     trimEnd = duration
@@ -101,8 +101,7 @@ struct SoundInspector: View {
                 .buttonStyle(.plain)
                 .font(Theme.Font.caption())
                 .foregroundStyle(Theme.textTertiary)
-
-                Spacer()
+                .help("Play the full file again.")
 
                 Button {
                     previewTrimmed()
@@ -124,42 +123,170 @@ struct SoundInspector: View {
         }
     }
 
-    private var playbackSection: some View {
-        VStack(alignment: .leading, spacing: Theme.Spacing.m) {
-            Picker("", selection: $playMode) {
-                ForEach(PlayMode.allCases) { mode in Text(mode.label).tag(mode) }
+    /// Two columns: labels on the right edge of the first column, as in the macOS Settings.
+    private var settingsGrid: some View {
+        Grid(alignment: .leading, horizontalSpacing: Theme.Spacing.m, verticalSpacing: Theme.Spacing.m) {
+            GridRow(alignment: .firstTextBaseline) {
+                rowLabel("Key")
+                keyRow
             }
-            .pickerStyle(.segmented)
+            GridRow(alignment: .center) {
+                rowLabel("Look")
+                lookRow
+            }
+            GridRow(alignment: .center) {
+                rowLabel("Behaviour")
+                playModePicker
+            }
+            GridRow(alignment: .center) {
+                Color.clear.gridCellUnsizedAxes([.horizontal, .vertical])
+                switchToggle("Loop", isOn: $loops)
+            }
+            GridRow(alignment: .center) {
+                rowLabel("With other pads")
+                otherPadsRow
+            }
+            GridRow(alignment: .center) {
+                rowLabel("Sound")
+                volumeRow
+            }
+            GridRow(alignment: .top) {
+                Color.clear.gridCellUnsizedAxes([.horizontal, .vertical])
+                VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
+                    switchToggle("Match loudness", isOn: $matchesLoudness)
+                        .help(loudnessHelp)
+                    Text(loudnessHelp)
+                        .font(Theme.Font.caption())
+                        .foregroundStyle(Theme.textTertiary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            GridRow(alignment: .top) {
+                Color.clear.gridCellUnsizedAxes([.horizontal, .vertical])
+                DisclosureGroup("Shape", isExpanded: $showsShape) {
+                    shapeSliders.padding(.top, Theme.Spacing.s)
+                }
+                .font(Theme.Font.body())
+                .foregroundStyle(Theme.textSecondary)
+            }
+        }
+    }
+
+    private func rowLabel(_ text: String) -> some View {
+        Text(text)
+            .font(Theme.Font.body())
+            .foregroundStyle(Theme.textSecondary)
+            .gridColumnAlignment(.trailing)
+    }
+
+    private func switchToggle(_ title: String, isOn: Binding<Bool>) -> some View {
+        Toggle(isOn: isOn) {
+            Text(title).font(Theme.Font.body())
+        }
+        .toggleStyle(.switch)
+        .controlSize(.mini)
+        .tint(tint.color)
+    }
+
+    private var keyRow: some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
+            KeyRecorderField(key: $hotKey, tint: tint.color)
+            if let owner = KeyRecording.owner(of: hotKey, excluding: sound.id, in: library.sounds) {
+                Text("Moves from \(owner.name)")
+                    .font(Theme.Font.caption())
+                    .foregroundStyle(SoundTint.amber.color)
+            }
+        }
+    }
+
+    private var lookRow: some View {
+        HStack(spacing: Theme.Spacing.s) {
+            ForEach(SoundTint.allCases) { option in
+                swatch(option)
+            }
+
+            Divider().frame(height: 16).opacity(0.3)
+
+            Picker("Icon", selection: $emoji) {
+                ForEach(emojiChoices, id: \.self) { choice in
+                    Text(choice.isEmpty ? "None" : choice).tag(choice)
+                }
+            }
             .labelsHidden()
-            .help("Play over: each press adds a sound. Restart: plays from the start. Toggle: the next press stops it. Hold: plays while you hold the key.")
+            .frame(width: 74)
+            .controlSize(.small)
+            .accessibilityLabel("Icon")
+            .help("Icon")
+        }
+    }
 
-            HStack(spacing: Theme.Spacing.l) {
-                Picker("Choke group", selection: $chokeGroup) {
-                    Text("No group").tag(0)
-                    ForEach(1...4, id: \.self) { group in Text("Group \(group)").tag(group) }
-                }
-                .labelsHidden()
-                .frame(width: 110)
-                .controlSize(.small)
-                .help("A pad stops the other pads in its group.")
+    private func swatch(_ option: SoundTint) -> some View {
+        // The swatch of `.none` shows the accent colour. "None" does not describe it.
+        let name = option == .none ? "Default" : option.label
+        return Button {
+            tint = option
+        } label: {
+            Circle()
+                .fill(option.color)
+                .frame(width: 18, height: 18)
+                .overlay(
+                    Circle().strokeBorder(.white.opacity(tint == option ? 0.9 : 0), lineWidth: 2)
+                )
+        }
+        .buttonStyle(.plain)
+        .help(name)
+        .accessibilityLabel(name)
+        .accessibilityAddTraits(tint == option ? .isSelected : [])
+    }
 
-                Toggle(isOn: $ducksOthers) {
-                    Text("Duck other pads").font(Theme.Font.body())
-                }
-                .toggleStyle(.switch)
-                .controlSize(.mini)
-                .tint(tint.color)
+    private var playModePicker: some View {
+        Picker("Play mode", selection: $playMode) {
+            ForEach(PlayMode.allCases) { mode in Text(mode.label).tag(mode) }
+        }
+        .pickerStyle(.segmented)
+        .labelsHidden()
+        .help("Play over: each press adds a sound. Restart: plays from the start. Toggle: the next press stops it. Hold: plays while you hold the key.")
+    }
+
+    private var otherPadsRow: some View {
+        HStack(spacing: Theme.Spacing.l) {
+            Picker("Choke group", selection: $chokeGroup) {
+                Text("No group").tag(0)
+                ForEach(1...4, id: \.self) { group in Text("Group \(group)").tag(group) }
+            }
+            .labelsHidden()
+            .frame(width: 110)
+            .controlSize(.small)
+            .help("A pad stops the other pads in its group.")
+
+            switchToggle("Duck other pads", isOn: $ducksOthers)
                 .help("While this pad plays, the other pads go down by 12 dB.")
-            }
+        }
+    }
 
-            HStack(spacing: Theme.Spacing.l) {
-                labeledSlider("Fade in", value: $fadeIn, in: 0...2, text: String(format: "%.2f s", fadeIn))
-                labeledSlider("Fade out", value: $fadeOut, in: 0...2, text: String(format: "%.2f s", fadeOut))
-            }
-            HStack(spacing: Theme.Spacing.l) {
-                labeledSlider("Pitch", value: $pitch, in: -12...12, step: 1, text: String(format: "%+.0f st", pitch))
-                labeledSlider("Speed", value: $speed, in: 0.5...2, text: String(format: "%.2fx", speed))
-            }
+    private var volumeRow: some View {
+        HStack(spacing: Theme.Spacing.s) {
+            Slider(value: $volume, in: 0...1)
+                .controlSize(.small)
+                .tint(tint.color)
+                .accessibilityLabel("Volume")
+                .onChange(of: volume) { _, newValue in
+                    // Audible immediately if this sound is already playing.
+                    engine.setVolume(newValue, for: sound.id)
+                }
+            Text("\(Int(volume * 100))%")
+                .font(Theme.Font.caption().monospacedDigit())
+                .foregroundStyle(Theme.textTertiary)
+                .frame(width: 34, alignment: .trailing)
+        }
+    }
+
+    private var shapeSliders: some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.s) {
+            labeledSlider("Fade in", value: $fadeIn, in: 0...2, text: String(format: "%.2f s", fadeIn))
+            labeledSlider("Fade out", value: $fadeOut, in: 0...2, text: String(format: "%.2f s", fadeOut))
+            labeledSlider("Pitch", value: $pitch, in: -12...12, step: 1, text: String(format: "%+.0f st", pitch))
+            labeledSlider("Speed", value: $speed, in: 0.5...2, text: String(format: "%.2fx", speed))
         }
     }
 
@@ -179,89 +306,11 @@ struct SoundInspector: View {
             }
             .controlSize(.small)
             .tint(tint.color)
+            .accessibilityLabel(title)
             Text(text)
                 .font(Theme.Font.caption().monospacedDigit())
                 .foregroundStyle(Theme.textTertiary)
                 .frame(width: 44, alignment: .trailing)
-        }
-    }
-
-    private var settingsGrid: some View {
-        VStack(alignment: .leading, spacing: Theme.Spacing.m) {
-            HStack(spacing: Theme.Spacing.s) {
-                Image(systemName: "speaker.wave.2.fill")
-                    .font(Theme.Font.caption())
-                    .foregroundStyle(Theme.textTertiary)
-                    .frame(width: 16)
-                Slider(value: $volume, in: 0...1)
-                    .controlSize(.small)
-                    .tint(tint.color)
-                    .onChange(of: volume) { _, newValue in
-                        // Audible immediately if this sound is already playing.
-                        engine.setVolume(newValue, for: sound.id)
-                    }
-                Text("\(Int(volume * 100))%")
-                    .font(Theme.Font.caption().monospacedDigit())
-                    .foregroundStyle(Theme.textTertiary)
-                    .frame(width: 34, alignment: .trailing)
-            }
-
-            HStack(spacing: Theme.Spacing.l) {
-                Toggle(isOn: $loops) {
-                    Text("Loop").font(Theme.Font.body())
-                }
-                .toggleStyle(.switch)
-                .controlSize(.mini)
-                .tint(tint.color)
-
-                Toggle(isOn: $matchesLoudness) {
-                    Text("Match loudness").font(Theme.Font.body())
-                }
-                .toggleStyle(.switch)
-                .controlSize(.mini)
-                .tint(tint.color)
-                .help(loudnessHelp)
-
-                Spacer()
-
-                Picker("", selection: $hotKey) {
-                    Text("No key").tag("")
-                    ForEach((1...9).map(String.init) + ["0"], id: \.self) { key in
-                        Text(key).tag(key)
-                    }
-                }
-                .labelsHidden()
-                .frame(width: 78)
-                .controlSize(.small)
-            }
-
-            HStack(spacing: Theme.Spacing.s) {
-                ForEach(SoundTint.allCases) { option in
-                    Button {
-                        tint = option
-                    } label: {
-                        Circle()
-                            .fill(option.color)
-                            .frame(width: 18, height: 18)
-                            .overlay(
-                                Circle().strokeBorder(.white.opacity(tint == option ? 0.9 : 0), lineWidth: 2)
-                            )
-                    }
-                    .buttonStyle(.plain)
-                    .help(option.label)
-                }
-
-                Divider().frame(height: 16).opacity(0.3)
-
-                Picker("", selection: $emoji) {
-                    ForEach(emojiChoices, id: \.self) { choice in
-                        Text(choice.isEmpty ? "None" : choice).tag(choice)
-                    }
-                }
-                .labelsHidden()
-                .frame(width: 74)
-                .controlSize(.small)
-            }
         }
     }
 
@@ -291,6 +340,7 @@ struct SoundInspector: View {
         tint = sound.tint
         emoji = sound.emoji ?? ""
         hotKey = sound.hotKey ?? ""
+        showsShape = Self.hasCustomShape(fadeIn: fadeIn, fadeOut: fadeOut, pitch: pitch, speed: speed)
 
         guard let resolution = library.resolve(sound) else { return }
         let url = resolution.url
@@ -357,6 +407,12 @@ struct SoundInspector: View {
         item.fadeOut = fadeOut
         item.pitch = pitch
         item.speed = speed
+    }
+
+    /// Gives true if one of the shape values is not at its default.
+    /// The inspector then opens the "Shape" group, so that the user sees the change.
+    static func hasCustomShape(fadeIn: Double, fadeOut: Double, pitch: Double, speed: Double) -> Bool {
+        fadeIn != 0 || fadeOut != SoundItem.defaultFadeOut || pitch != 0 || speed != 1
     }
 
     /// For example: "-29.1 LUFS. Match loudness adds +11.1 dB."
