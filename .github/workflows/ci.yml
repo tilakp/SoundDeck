@@ -1,0 +1,21 @@
+# Builds the application and runs the unit tests for each push to main and each pull request.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Show the Xcode version
+        run: xcodebuild -version
+      # The UI test target has only empty examples. Run the unit tests only.
+      - name: Build and run the unit tests
+        run: >
+          xcodebuild -project SoundDeck.xcodeproj -scheme SoundDeck
+          -destination 'platform=macOS' -only-testing:SoundDeckTests test

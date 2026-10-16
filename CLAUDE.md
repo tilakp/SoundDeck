@@ -52,6 +52,10 @@ xcodebuild -project SoundDeck.xcodeproj -scheme SoundDeck -destination 'platform
 
 To do a quick type check, type `swift build`.
 
+GitHub Actions runs the unit tests for each push to `main` and each pull request. The workflow is `.github/workflows/ci.yml`.
+
+If `xcodebuild` reports that the developer directory is a command line tools instance, put `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer` before the command.
+
 The file `Package.swift` is a type check aid only. It has no entitlements, no asset catalog and no bundled sounds. Playback and import do not operate with `swift run`. The target includes only the `SoundDeck/` directory. A previous version included the repository root. That version compiled the test targets into the application module.
 
 To see debug output, run the binary directly. Do not use Xcode.
@@ -106,6 +110,8 @@ Do not use `UserDefaults`. `UserDefaults` is a preferences store. A change to th
 
 The store keeps an unreadable file as `library-corrupt-*.json`. It does not overwrite the file. The store migrates the old `UserDefaults` key one time.
 
+One bad pad does not stop the load. The type `Lossy` skips the bad pad, and the store keeps a copy of the original file. If the store cannot keep a copy, it stops saving. A save would then replace the only copy of the deck of the user.
+
 ### SoundLibrary.swift
 
 This file adds, removes, reorders and renames sounds. It also assigns hotkeys and does searches. It adds, selects, renames and removes decks.
@@ -127,6 +133,12 @@ The graph is:
 The engine attaches a voice at playback. The engine detaches the voice at retirement. Always use the function `retire()`. This function releases the security scope. It also clears the pad state after the last voice of a sound stops.
 
 The engine pauses when it is idle. This releases the output device.
+
+The engine stops when the output device changes or the Mac sleeps. The engine then retires all voices and routes again. It also routes again when a device is added or removed, or when the system default changes. If the selected device is missing, the engine uses the system default. It keeps the selection, so it goes back when the device returns.
+
+After a change of device, the engine connects the main mixer again at the sample rate of the device. Without this, a device with another rate can fail or play no sound.
+
+The function `trimWindow` holds the trim math. It is a pure function, so the tests can call it.
 
 ### DeckArchive.swift
 
@@ -151,6 +163,12 @@ This file uses the Carbon function `RegisterEventHotKey`.
 Do not use `NSEvent.addGlobalMonitorForEvents`. That function needs Accessibility permission. That function also receives all keystrokes of the system. The Carbon function needs no permission. The Carbon function receives only the registered combinations.
 
 The C callback has no user data parameter. Therefore the dispatch table is in a singleton. The key of the table is the hotkey ID.
+
+The modifiers are ⌃⌥. VoiceOver uses ⌃⌥ for its own commands. While VoiceOver is on, the modifiers are ⌃⌥⌘.
+
+### HotKeyBinder.swift
+
+This file registers the global hotkeys of the active deck. It registers again only when the keys change, or when VoiceOver starts or stops. The application owns the binder, not the window. Thus the keys also change when the window is closed.
 
 ### Theme.swift
 

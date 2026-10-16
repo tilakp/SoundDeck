@@ -1,3 +1,4 @@
+import AVFoundation
 import Foundation
 import Testing
 @testable import SoundDeck
@@ -215,5 +216,124 @@ struct ArchiveTests {
     @Test func otherJSONIsRefused() throws {
         let library = SoundLibrary(store: SoundLibraryStore(directoryURL: try temporaryDirectory()))
         #expect(throws: DeckArchiveError.self) { try library.importArchive(Data("{\"a\": 1}".utf8)) }
+    }
+}
+
+struct TrimWindowTests {
+    private let rate = 48_000.0
+
+    @Test func noTrimPlaysTheWholeFile() {
+        let window = AudioEngine.trimWindow(trimStart: 0, trimEnd: nil, totalFrames: 96_000, sampleRate: rate)
+        #expect(window.startFrame == 0)
+        #expect(window.frameCount == 96_000)
+        #expect(window.end == 2)
+    }
+
+    @Test func trimSelectsThePart() {
+        let window = AudioEngine.trimWindow(trimStart: 0.5, trimEnd: 1.5, totalFrames: 96_000, sampleRate: rate)
+        #expect(window.startFrame == 24_000)
+        #expect(window.frameCount == 48_000)
+    }
+
+    @Test func trimPastTheEndIsClamped() {
+        // The file became shorter after the trim was set.
+        let window = AudioEngine.trimWindow(trimStart: 1, trimEnd: 10, totalFrames: 96_000, sampleRate: rate)
+        #expect(window.end == 2)
+        #expect(window.startFrame + AVAudioFramePosition(window.frameCount) <= 96_000)
+    }
+
+    @Test func emptyOrReversedTrimHasNoFrames() {
+        #expect(AudioEngine.trimWindow(trimStart: 5, trimEnd: nil, totalFrames: 96_000, sampleRate: rate).frameCount == 0)
+        #expect(AudioEngine.trimWindow(trimStart: 1.5, trimEnd: 0.5, totalFrames: 96_000, sampleRate: rate).frameCount == 0)
+        #expect(AudioEngine.trimWindow(trimStart: -1, trimEnd: 0, totalFrames: 96_000, sampleRate: rate).frameCount == 0)
+    }
+}
+
+@MainActor
+struct HotKeyTests {
+    @Test func keyCodesCoverDigitsAndLetters() {
+        let keys = (0...9).map(String.init) + "abcdefghijklmnopqrstuvwxyz".map(String.init)
+        let codes = keys.compactMap { GlobalHotKeys.keyCode(for: $0) }
+        #expect(codes.count == keys.count)
+        #expect(Set(codes).count == keys.count)
+        #expect(GlobalHotKeys.keyCode(for: "A") == GlobalHotKeys.keyCode(for: "a"))
+        #expect(GlobalHotKeys.keyCode(for: "?") == nil)
+    }
+}
+
+@MainActor
+struct HotKeyBinderTests {
+    @Test func registersAgainOnlyWhenTheKeysChange() throws {
+        let library = SoundLibrary(store: SoundLibraryStore(directoryURL: try temporaryDirectory()))
+        var calls: [[HotKeyBinder.Key]] = []
+        let binder = HotKeyBinder(library: library) { calls.append($0) }
+        #expect(calls.count == 1)
+        #expect(calls[0].count == library.sounds.filter { $0.hotKey != nil }.count)
+
+        let pad = library.sounds[0]
+        library.update(pad) { $0.volume = 0.3 }
+        library.rename(pad, to: "Other name")
+        #expect(calls.count == 1)
+
+        library.update(pad) { $0.hotKey = nil }
+        #expect(calls.count == 2)
+
+        library.addDeck(named: "Empty")
+        #expect(calls.count == 3)
+        #expect(calls[2].isEmpty)
+
+        binder.refresh()
+        #expect(calls.count == 4)
+    }
+}
+
+struct LibraryFileSafetyTests {
+    @Test func oneBadPadDoesNotLoseTheDeck() throws {
+        let directory = try temporaryDirectory()
+        let json = """
+        {"version": 2, "decks": [{"id": "0E2699C1-F84B-4FFD-B2C3-15D1E1954DA4", "name": "Main", "sounds": [
+          {"id": "1332466E-3960-45EE-A086-05F7A2809008", "name": "Gong.wav", "isBundled": true, "tint": "chartreuse"},
+          {"name": "No id", "isBundled": true},
+          {"id": "EB02EBAF-461B-45B3-89AE-AA3BA2BBB5FE", "name": "Glass.wav", "isBundled": true}
+        ]}]}
+        """
+        try Data(json.utf8).write(to: directory.appendingPathComponent("library.json"))
+        let store = SoundLibraryStore(directoryURL: directory)
+        let state = try #require(store.load())
+
+        // The unknown tint is not an error. Only the pad with no id is skipped.
+        #expect(state.decks[0].sounds.map(\.name) == ["Gong.wav", "Glass.wav"])
+        #expect(state.decks[0].sounds[0].tint == .none)
+        let files = try FileManager.default.contentsOfDirectory(atPath: directory.path)
+        #expect(files.contains { $0.hasPrefix("library-corrupt-") })
+        #expect(store.isReadOnly == false)
+    }
+
+    @Test func unreadableFileIsKept() throws {
+        let directory = try temporaryDirectory()
+        try Data("not json".utf8).write(to: directory.appendingPathComponent("library.json"))
+        let store = SoundLibraryStore(directoryURL: directory)
+        #expect(store.load() == nil)
+        let files = try FileManager.default.contentsOfDirectory(atPath: directory.path)
+        let kept = try #require(files.first { $0.hasPrefix("library-corrupt-") })
+        #expect(try Data(contentsOf: directory.appendingPathComponent(kept)) == Data("not json".utf8))
+    }
+}
+
+extension LibraryFileSafetyTests {
+    @Test func storeDoesNotSaveWhenItCannotKeepTheFile() throws {
+        let directory = try temporaryDirectory()
+        let file = directory.appendingPathComponent("library.json")
+        try Data("not json".utf8).write(to: file)
+        // A read-only directory makes the salvage fail.
+        try FileManager.default.setAttributes([.posixPermissions: 0o555], ofItemAtPath: directory.path)
+        defer { try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: directory.path) }
+
+        let store = SoundLibraryStore(directoryURL: directory)
+        #expect(store.load() == nil)
+        #expect(store.isReadOnly)
+        let deck = Deck(name: "Main")
+        store.save(.init(decks: [deck], activeDeckID: deck.id))
+        #expect(try Data(contentsOf: file) == Data("not json".utf8))
     }
 }

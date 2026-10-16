@@ -1,4 +1,5 @@
 import AVFoundation
+import AppKit
 import CoreAudio
 import Foundation
 
@@ -108,10 +109,37 @@ final class AudioEngine: ObservableObject {
             masterVolume = stored
         }
         engine.mainMixerNode.outputVolume = masterVolume
+        selectedDeviceUID = UserDefaults.standard.string(forKey: Self.outputDeviceKey)
         refreshDevices()
-        if let savedUID = UserDefaults.standard.string(forKey: Self.outputDeviceKey) {
-            selectOutputDevice(uid: savedUID)
+        applyOutputDevice()
+
+        // The engine stops when the output device changes or the Mac sleeps.
+        // For example, this occurs when AirPods connect. Clear the voices and route again.
+        NotificationCenter.default.addObserver(
+            forName: .AVAudioEngineConfigurationChange, object: engine, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.handleConfigurationChange() }
         }
+        NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didWakeNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.handleConfigurationChange() }
+        }
+        // A device was added or removed, or the system default changed.
+        AudioDeviceList.observeChanges { [weak self] in
+            MainActor.assumeIsolated {
+                self?.refreshDevices()
+                self?.applyOutputDevice()
+            }
+        }
+    }
+
+    private func handleConfigurationChange() {
+        print("[DEBUG] Audio configuration changed")
+        // The engine stopped, so its voices cannot continue.
+        for voice in Array(voices.values) { retire(voice) }
+        refreshDevices()
+        applyOutputDevice()
     }
 
     // MARK: - Playback
@@ -153,14 +181,13 @@ final class AudioEngine: ObservableObject {
             throw PlaybackError.engineFailed(underlying: error)
         }
 
-        // Trim window, clamped to the file so bad metadata cannot schedule past the end.
-        let sampleRate = file.processingFormat.sampleRate
-        let totalFrames = file.length
-        let totalDuration = Double(totalFrames) / sampleRate
-        let start = max(0, min(sound.trimStart, totalDuration))
-        let end = min(sound.trimEnd ?? totalDuration, totalDuration)
-        let startFrame = AVAudioFramePosition(start * sampleRate)
-        let frameCount = AVAudioFrameCount(max(0, (end - start) * sampleRate))
+        let window = Self.trimWindow(
+            trimStart: sound.trimStart,
+            trimEnd: sound.trimEnd,
+            totalFrames: file.length,
+            sampleRate: file.processingFormat.sampleRate
+        )
+        let (start, end, startFrame, frameCount) = (window.start, window.end, window.startFrame, window.frameCount)
 
         guard frameCount > 0 else {
             engine.detach(player)
@@ -199,6 +226,28 @@ final class AudioEngine: ObservableObject {
             print("[DEBUG] Could not play \(sound.name): \(error)")
             lastError = error.localizedDescription
         }
+    }
+
+    struct TrimWindow: Equatable {
+        /// Seconds from the start of the file.
+        let start: Double
+        let end: Double
+        let startFrame: AVAudioFramePosition
+        let frameCount: AVAudioFrameCount
+    }
+
+    /// The part of the file to play, clamped to the file so bad metadata cannot schedule past the end.
+    nonisolated static func trimWindow(trimStart: Double, trimEnd: Double?,
+                                       totalFrames: AVAudioFramePosition, sampleRate: Double) -> TrimWindow {
+        let totalDuration = Double(totalFrames) / sampleRate
+        let start = max(0, min(trimStart, totalDuration))
+        let end = min(trimEnd ?? totalDuration, totalDuration)
+        return TrimWindow(
+            start: start,
+            end: end,
+            startFrame: AVAudioFramePosition(start * sampleRate),
+            frameCount: AVAudioFrameCount(max(0, (end - start) * sampleRate))
+        )
     }
 
     /// Re-schedules on completion when looping, so a loop survives arbitrary lengths
@@ -267,7 +316,7 @@ final class AudioEngine: ObservableObject {
         let interval = fadeOutDuration / Double(steps)
         let startVolume = voice.mixer.outputVolume
         var step = 0
-        let timer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] timer in
+        let timer = Timer(timeInterval: interval, repeats: true) { [weak self] timer in
             step += 1
             Task { @MainActor in
                 guard let self else { timer.invalidate(); return }
@@ -280,6 +329,8 @@ final class AudioEngine: ObservableObject {
                 }
             }
         }
+        // The common modes keep the timer running while a menu is open.
+        RunLoop.main.add(timer, forMode: .common)
         voice.fadeTimer = timer
     }
 
@@ -315,9 +366,11 @@ final class AudioEngine: ObservableObject {
 
     private func startProgressTimer() {
         guard progressTimer == nil else { return }
-        progressTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 30.0, repeats: true) { [weak self] _ in
+        let timer = Timer(timeInterval: 1.0 / 30.0, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.tick() }
         }
+        RunLoop.main.add(timer, forMode: .common)
+        progressTimer = timer
     }
 
     private func stopProgressTimer() {
@@ -366,19 +419,25 @@ final class AudioEngine: ObservableObject {
     func selectOutputDevice(uid: String?) {
         selectedDeviceUID = uid
         UserDefaults.standard.set(uid, forKey: Self.outputDeviceKey)
+        applyOutputDevice()
+    }
 
-        let deviceID: AudioDeviceID?
-        if let uid {
-            deviceID = outputDevices.first(where: { $0.uid == uid })?.id
-        } else {
-            deviceID = AudioDeviceList.defaultOutputDevice()
+    /// Routes the engine to the selected device. If that device is missing, it uses the
+    /// system default and keeps the selection, so the deck goes back when the device returns.
+    private func applyOutputDevice() {
+        let preferred = selectedDeviceUID.flatMap { uid in outputDevices.first { $0.uid == uid }?.id }
+        if selectedDeviceUID != nil, preferred == nil {
+            print("[DEBUG] The selected output device is missing; using the system default")
         }
-        guard var target = deviceID else { return }
+        guard var target = preferred ?? AudioDeviceList.defaultOutputDevice(),
+              let audioUnit = engine.outputNode.audioUnit else { return }
+        // Setting the device can post a configuration change. This check stops a loop.
+        guard target != Self.currentDevice(of: audioUnit) else { return }
 
         // The device property can only be set while the engine is stopped.
-        let wasRunning = engine.isRunning
+        // A stopped engine cannot continue its voices, so retire them.
+        for voice in Array(voices.values) { retire(voice) }
         engine.stop()
-        guard let audioUnit = engine.outputNode.audioUnit else { return }
         let status = AudioUnitSetProperty(
             audioUnit,
             kAudioOutputUnitProperty_CurrentDevice,
@@ -389,8 +448,24 @@ final class AudioEngine: ObservableObject {
         )
         if status != noErr {
             print("[DEBUG] Could not set output device (OSStatus \(status))")
+            return
         }
-        if wasRunning { try? startEngineIfNeeded() }
+        // The new device can have another sample rate or channel count. Connect the main
+        // mixer again at the rate of the device. The output unit maps stereo to the first two channels.
+        let hardware = engine.outputNode.outputFormat(forBus: 0)
+        if hardware.sampleRate > 0,
+           let format = AVAudioFormat(standardFormatWithSampleRate: hardware.sampleRate,
+                                      channels: min(2, max(1, hardware.channelCount))) {
+            engine.connect(engine.mainMixerNode, to: engine.outputNode, format: format)
+        }
+        print("[DEBUG] Output device is \(target)")
+    }
+
+    private static func currentDevice(of audioUnit: AudioUnit) -> AudioDeviceID? {
+        var device = AudioDeviceID(0)
+        var size = UInt32(MemoryLayout<AudioDeviceID>.size)
+        let status = AudioUnitGetProperty(audioUnit, kAudioOutputUnitProperty_CurrentDevice, kAudioUnitScope_Global, 0, &device, &size)
+        return status == noErr ? device : nil
     }
 
     var selectedDeviceName: String {

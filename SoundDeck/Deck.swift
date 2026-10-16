@@ -18,6 +18,20 @@ struct Deck: Identifiable, Codable, Equatable {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         id = try c.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
         name = try c.decodeIfPresent(String.self, forKey: .name) ?? "Deck"
-        sounds = try c.decodeIfPresent([SoundItem].self, forKey: .sounds) ?? []
+        sounds = (try c.decodeIfPresent([Lossy<SoundItem>].self, forKey: .sounds) ?? []).compactMap(\.value)
+    }
+}
+
+/// Decodes one item of an array. A bad item gives nil, and the other items still load.
+/// The store keeps a backup of the file when it skips an item.
+struct Lossy<Value: Codable>: Codable {
+    let value: Value?
+
+    init(from decoder: Decoder) throws {
+        value = try? Value(from: decoder)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        try value.encode(to: encoder)
     }
 }

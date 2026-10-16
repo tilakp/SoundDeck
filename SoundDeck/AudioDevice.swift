@@ -43,6 +43,21 @@ enum AudioDeviceList {
         return status == noErr ? deviceID : nil
     }
 
+    /// Calls `handler` on the main queue when a device is added or removed, or when the
+    /// default output changes. The listeners stay for the life of the application.
+    static func observeChanges(_ handler: @escaping () -> Void) {
+        for selector in [kAudioHardwarePropertyDevices, kAudioHardwarePropertyDefaultOutputDevice] {
+            var address = AudioObjectPropertyAddress(
+                mSelector: selector,
+                mScope: kAudioObjectPropertyScopeGlobal,
+                mElement: kAudioObjectPropertyElementMain
+            )
+            AudioObjectAddPropertyListenerBlock(AudioObjectID(kAudioObjectSystemObject), &address, .main) { _, _ in
+                handler()
+            }
+        }
+    }
+
     // MARK: - CoreAudio plumbing
 
     private static func deviceIDs() -> [AudioDeviceID] {

@@ -99,7 +99,8 @@ struct SoundItem: Identifiable, Codable, Equatable {
         loops = try c.decodeIfPresent(Bool.self, forKey: .loops) ?? false
         trimStart = try c.decodeIfPresent(Double.self, forKey: .trimStart) ?? 0
         trimEnd = try c.decodeIfPresent(Double.self, forKey: .trimEnd)
-        tint = try c.decodeIfPresent(SoundTint.self, forKey: .tint) ?? .none
+        // A tint from a newer build is not an error. The pad gets no tint.
+        tint = (try? c.decodeIfPresent(SoundTint.self, forKey: .tint)) ?? .none
         emoji = try c.decodeIfPresent(String.self, forKey: .emoji)
         hotKey = try c.decodeIfPresent(String.self, forKey: .hotKey)
     }

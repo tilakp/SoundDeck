@@ -9,7 +9,7 @@ import Foundation
 ///
 /// Writes go through a temporary file and an atomic replace so an interrupted save
 /// cannot leave a truncated library behind.
-struct SoundLibraryStore {
+final class SoundLibraryStore {
     /// Bumped when the on-disk shape changes in a way `SoundItem`'s lenient decoding
     /// cannot absorb on its own.
     /// Version 1 has one list of sounds. Version 2 has decks.
@@ -26,7 +26,7 @@ struct SoundLibraryStore {
         var decks: [Deck]?
         var activeDeckID: UUID?
         /// Version 1 only.
-        var sounds: [SoundItem]?
+        var sounds: [Lossy<SoundItem>]?
     }
 
     /// The name of the first deck when the library has no decks yet.
@@ -36,6 +36,10 @@ struct SoundLibraryStore {
     private let fileManager = FileManager.default
 
     let directoryURL: URL
+
+    /// True when the store could not keep a copy of an unreadable file. A save would
+    /// then replace the only copy of the deck of the user, so the store does not save.
+    private(set) var isReadOnly = false
 
     /// Tests give a temporary directory.
     init(directoryURL: URL? = nil) {
@@ -58,13 +62,19 @@ struct SoundLibraryStore {
             do {
                 let state = try Self.decode(data)
                 print("[DEBUG] Loaded \(state.decks.count) decks from \(fileURL.path)")
+                let skipped = Self.storedSoundCount(in: data) - state.decks.reduce(0) { $0 + $1.sounds.count }
+                if skipped > 0 {
+                    // The next save drops the bad pads. Keep the original file for recovery by hand.
+                    print("[DEBUG] Skipped \(skipped) unreadable sounds")
+                    keepCopy(of: fileURL, move: false)
+                }
                 return state
             } catch {
                 // Keep the unreadable file. Do not overwrite it. It is the only
                 // copy of the user's deck and may be recoverable by hand.
-                let salvage = directoryURL.appendingPathComponent("library-corrupt-\(Int(Date().timeIntervalSince1970)).json")
-                try? fileManager.moveItem(at: fileURL, to: salvage)
-                print("[DEBUG] Library unreadable (\(error)); preserved at \(salvage.lastPathComponent)")
+                print("[DEBUG] Library unreadable (\(error))")
+                keepCopy(of: fileURL, move: true)
+                if isReadOnly { return nil }
             }
         }
         return migrateFromDefaults()
@@ -75,19 +85,47 @@ struct SoundLibraryStore {
         let payload = try JSONDecoder().decode(Payload.self, from: data)
         var decks = payload.decks ?? []
         if decks.isEmpty {
-            decks = [Deck(name: defaultDeckName, sounds: payload.sounds ?? [])]
+            decks = [Deck(name: defaultDeckName, sounds: (payload.sounds ?? []).compactMap(\.value))]
         }
         let active = payload.activeDeckID.flatMap { id in decks.first { $0.id == id }?.id } ?? decks[0].id
         return State(decks: decks, activeDeckID: active)
     }
 
+    /// Counts the sounds in the file without the model, so that skipped sounds show.
+    static func storedSoundCount(in data: Data) -> Int {
+        guard let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return 0 }
+        let decks = (root["decks"] as? [[String: Any]]) ?? []
+        let inDecks = decks.reduce(0) { $0 + (($1["sounds"] as? [Any])?.count ?? 0) }
+        return inDecks + ((root["sounds"] as? [Any])?.count ?? 0)
+    }
+
+    /// Keeps a copy as `library-corrupt-<time>.json`. If this fails, the store stops saving.
+    private func keepCopy(of url: URL, move: Bool) {
+        let salvage = directoryURL.appendingPathComponent("library-corrupt-\(Int(Date().timeIntervalSince1970)).json")
+        do {
+            if move {
+                try fileManager.moveItem(at: url, to: salvage)
+            } else {
+                try fileManager.copyItem(at: url, to: salvage)
+            }
+            print("[DEBUG] Preserved the library at \(salvage.lastPathComponent)")
+        } catch {
+            isReadOnly = true
+            print("[DEBUG] Could not preserve the library (\(error)); saving is off")
+        }
+    }
+
     static func encode(_ state: State) throws -> Data {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        return try encoder.encode(Payload(version: currentVersion, decks: state.decks, activeDeckID: state.activeDeckID))
+        return try encoder.encode(Payload(version: currentVersion, decks: state.decks, activeDeckID: state.activeDeckID, sounds: nil))
     }
 
     func save(_ state: State) {
+        guard !isReadOnly else {
+            print("[DEBUG] Not saving: the unreadable library has no copy")
+            return
+        }
         do {
             try fileManager.createDirectory(at: directoryURL, withIntermediateDirectories: true)
             let data = try Self.encode(state)

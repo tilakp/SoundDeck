@@ -17,8 +17,16 @@ final class GlobalHotKeys {
     static let shared = GlobalHotKeys()
 
     /// Ctrl+Option is unclaimed by most apps and cheap to reach one-handed.
-    static let modifiers: UInt32 = UInt32(controlKey | optionKey)
-    static let modifierDescription = "⌃⌥"
+    /// VoiceOver uses Ctrl+Option for its own commands. While VoiceOver is on, add Command.
+    static var modifiers: UInt32 {
+        NSWorkspace.shared.isVoiceOverEnabled
+            ? UInt32(controlKey | optionKey | cmdKey)
+            : UInt32(controlKey | optionKey)
+    }
+
+    static var modifierDescription: String {
+        NSWorkspace.shared.isVoiceOverEnabled ? "⌃⌥⌘" : "⌃⌥"
+    }
 
     private var handler: EventHandlerRef?
     private var registered: [UInt32: EventHotKeyRef] = [:]
@@ -111,7 +119,7 @@ final class GlobalHotKeys {
     }
 
     /// Virtual key codes for the characters the deck can bind.
-    private static func keyCode(for character: String) -> UInt32? {
+    static func keyCode(for character: String) -> UInt32? {
         let map: [String: Int] = [
             "1": kVK_ANSI_1, "2": kVK_ANSI_2, "3": kVK_ANSI_3, "4": kVK_ANSI_4, "5": kVK_ANSI_5,
             "6": kVK_ANSI_6, "7": kVK_ANSI_7, "8": kVK_ANSI_8, "9": kVK_ANSI_9, "0": kVK_ANSI_0,
