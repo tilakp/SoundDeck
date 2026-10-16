@@ -7,6 +7,8 @@ struct SoundDeckApp: App {
     @StateObject private var library: SoundLibrary
     @StateObject private var engine: AudioEngine
     @StateObject private var hotKeys: HotKeyBinder
+    // Receives sounddeck:// URLs without a new window.
+    @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
 
     init() {
         // print() is block-buffered when stdout is a pipe rather than a tty, which
