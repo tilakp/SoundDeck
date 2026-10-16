@@ -44,6 +44,7 @@ final class SoundLibrary: ObservableObject {
         if let loaded = store.load() {
             decks = loaded.decks
             activeDeckID = loaded.activeDeckID
+            if loaded.version < 3 { removeExtensionsFromNames() }
             replaceMissingBundledSounds()
             copyOldImports()
         } else {
@@ -51,6 +52,19 @@ final class SoundLibrary: ObservableObject {
         }
         assignMissingHotKeys()
         measureMissingLoudness()
+    }
+
+    /// Before version 3, a pad showed its file extension. Remove it from each name that the
+    /// user did not change. This runs one time: the next save writes version 3.
+    private func removeExtensionsFromNames() {
+        for deck in decks.indices {
+            for index in decks[deck].sounds.indices {
+                let sound = decks[deck].sounds[index]
+                guard sound.name == sound.fileName else { continue }
+                decks[deck].sounds[index].name = SoundItem.displayName(forFileName: sound.fileName)
+            }
+        }
+        save()
     }
 
     /// Some libraries have no hotkeys. This occurs with a library written before

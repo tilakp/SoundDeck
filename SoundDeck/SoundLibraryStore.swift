@@ -12,13 +12,16 @@ import Foundation
 final class SoundLibraryStore {
     /// Bumped when the on-disk shape changes in a way `SoundItem`'s lenient decoding
     /// cannot absorb on its own.
-    /// Version 1 has one list of sounds. Version 2 has decks.
-    static let currentVersion = 2
+    /// Version 1 has one list of sounds. Version 2 has decks. In version 3, pad names
+    /// have no file extension.
+    static let currentVersion = 3
 
     /// The decks and the active deck, as the store reads and writes them.
     struct State: Equatable {
         var decks: [Deck]
         var activeDeckID: UUID
+        /// The version of the file that the store read. A save always writes `currentVersion`.
+        var version = SoundLibraryStore.currentVersion
     }
 
     private struct Payload: Codable {
@@ -88,7 +91,7 @@ final class SoundLibraryStore {
             decks = [Deck(name: defaultDeckName, sounds: (payload.sounds ?? []).compactMap(\.value))]
         }
         let active = payload.activeDeckID.flatMap { id in decks.first { $0.id == id }?.id } ?? decks[0].id
-        return State(decks: decks, activeDeckID: active)
+        return State(decks: decks, activeDeckID: active, version: payload.version)
     }
 
     /// Counts the sounds in the file without the model, so that skipped sounds show.

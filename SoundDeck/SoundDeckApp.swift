@@ -12,13 +12,29 @@ struct SoundDeckApp: App {
         // print() is block-buffered when stdout is a pipe rather than a tty, which
         // swallows debug output when the app is launched from a script.
         setvbuf(stdout, nil, _IONBF, 0)
-        // Before the binder: it registers the keys at once if the hotkeys are on.
-        GlobalHotKeys.shared.restoreEnabledState()
-        let library = SoundLibrary()
+        let library: SoundLibrary
+        if Self.isRunningTests {
+            // The unit tests start the app as their host. Keep the deck of the user out of the
+            // tests, and do not register global hotkeys.
+            let directory = FileManager.default.temporaryDirectory
+                .appendingPathComponent("SoundDeckTestHost-\(ProcessInfo.processInfo.processIdentifier)", isDirectory: true)
+            library = SoundLibrary(store: SoundLibraryStore(directoryURL: directory))
+        } else {
+            // Before the binder: it registers the keys at once if the hotkeys are on.
+            GlobalHotKeys.shared.restoreEnabledState()
+            library = SoundLibrary()
+        }
         let engine = AudioEngine()
         _library = StateObject(wrappedValue: library)
         _engine = StateObject(wrappedValue: engine)
         _hotKeys = StateObject(wrappedValue: HotKeyBinder.live(library: library, engine: engine))
+        DeckCommands.shared = DeckCommands(library: library, engine: engine)
+    }
+
+    /// True when the app is the host of the unit tests.
+    static var isRunningTests: Bool {
+        NSClassFromString("XCTestCase") != nil
+            || ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
     }
 
     var body: some Scene {
@@ -31,6 +47,10 @@ struct SoundDeckApp: App {
         .defaultSize(width: 900, height: 640)
         .commands {
             CommandGroup(replacing: .newItem) {}
+        }
+
+        Settings {
+            SettingsView(rebindHotKeys: hotKeys.refresh)
         }
 
         MenuBarExtra {

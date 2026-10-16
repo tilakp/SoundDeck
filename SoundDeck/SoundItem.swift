@@ -134,7 +134,8 @@ struct SoundItem: Identifiable, Codable, Equatable {
 
     private init(name: String, isBundled: Bool) {
         self.id = UUID()
-        self.name = name
+        // The extension is noise on a pad: "Gong.wav" shows as "Gong".
+        self.name = Self.displayName(forFileName: name)
         self.fileName = name
         self.bookmarkData = nil
         self.isBundled = isBundled
@@ -194,6 +195,12 @@ struct SoundItem: Identifiable, Codable, Equatable {
     var initials: String {
         let letters = name.drop { !$0.isLetter && !$0.isNumber }
         return letters.isEmpty ? "♪" : String(letters.prefix(1)).uppercased()
+    }
+
+    /// The file name without its extension. A name that is only an extension stays as it is.
+    static func displayName(forFileName fileName: String) -> String {
+        let stripped = (fileName as NSString).deletingPathExtension
+        return stripped.isEmpty ? fileName : stripped
     }
 
     /// The location of the copy, if `isCopied` is true.
