@@ -1,0 +1,91 @@
+{
+	"Name": "Sound Deck",
+	"Version": "0.1.0.0",
+	"Author": "Tilak Patel",
+	"Actions": [
+		{
+			"Name": "Play Pad",
+			"UUID": "com.patelt.sounddeck.play",
+			"Icon": "imgs/actions/play/icon",
+			"Tooltip": "Plays a Sound Deck pad. Releases a Hold pad when the key comes up.",
+			"PropertyInspectorPath": "ui/pad.html",
+			"Controllers": [
+				"Keypad"
+			],
+			"States": [
+				{
+					"Image": "imgs/actions/play/key",
+					"TitleAlignment": "bottom"
+				}
+			]
+		},
+		{
+			"Name": "Stop All",
+			"UUID": "com.patelt.sounddeck.stop-all",
+			"Icon": "imgs/actions/stop-all/icon",
+			"Tooltip": "Stops all Sound Deck pads.",
+			"Controllers": [
+				"Keypad"
+			],
+			"States": [
+				{
+					"Image": "imgs/actions/stop-all/key",
+					"Title": "Stop All",
+					"TitleAlignment": "bottom"
+				}
+			]
+		},
+		{
+			"Name": "Stop Pad",
+			"UUID": "com.patelt.sounddeck.stop-pad",
+			"Icon": "imgs/actions/stop-pad/icon",
+			"Tooltip": "Stops one Sound Deck pad.",
+			"PropertyInspectorPath": "ui/pad.html",
+			"Controllers": [
+				"Keypad"
+			],
+			"States": [
+				{
+					"Image": "imgs/actions/stop-pad/key",
+					"TitleAlignment": "bottom"
+				}
+			]
+		},
+		{
+			"Name": "Select Deck",
+			"UUID": "com.patelt.sounddeck.deck",
+			"Icon": "imgs/actions/deck/icon",
+			"Tooltip": "Makes a deck the current deck in Sound Deck.",
+			"PropertyInspectorPath": "ui/deck.html",
+			"Controllers": [
+				"Keypad"
+			],
+			"States": [
+				{
+					"Image": "imgs/actions/deck/key",
+					"TitleAlignment": "bottom"
+				}
+			]
+		}
+	],
+	"Category": "Sound Deck",
+	"CategoryIcon": "imgs/plugin/category-icon",
+	"CodePath": "bin/plugin.js",
+	"Description": "Controls the Sound Deck soundboard for macOS through its sounddeck:// URL scheme.",
+	"Icon": "imgs/plugin/marketplace",
+	"SDKVersion": 3,
+	"Software": {
+		"MinimumVersion": "7.1"
+	},
+	"OS": [
+		{
+			"Platform": "mac",
+			"MinimumVersion": "14"
+		}
+	],
+	"Nodejs": {
+		"Version": "24",
+		"Debug": "enabled"
+	},
+	"UUID": "com.patelt.sounddeck"
+}
