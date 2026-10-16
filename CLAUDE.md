@@ -142,6 +142,16 @@ After a change of device, the engine connects the main mixer again at the sample
 
 The function `trimWindow` holds the trim math. It is a pure function, so the tests can call it.
 
+All triggers of a pad call `trigger`. This function applies the play mode: Play over, Restart, Toggle or Hold. The key release and the mouse release call `release`, which stops a Hold pad. The inspector preview calls `play`, so it always plays.
+
+A pad with a choke group stops the other pads in its group. While a pad with `ducksOthers` plays, the other pads go down to `duckLevel` (-12 dB).
+
+A pad that changes its pitch or speed gets an `AVAudioUnitTimePitch` between the player and the voice mixer. Other pads do not get this node.
+
+### VoiceEnvelope.swift
+
+This file holds the fade and duck state of one voice. It is a pure value, so the tests can step it. One engine timer steps all envelopes about 100 times each second, only while a fade or a duck change runs. The voice gain is the user volume times the loudness gain times the envelope gain.
+
 ### Loudness.swift
 
 This file measures integrated loudness with ITU-R BS.1770 and the sample peak. A mono file counts as dual mono, because the engine plays it on both channels.
@@ -169,6 +179,8 @@ The application sets the output device with `AudioUnitSetProperty(kAudioOutputUn
 This file uses the Carbon function `RegisterEventHotKey`.
 
 Do not use `NSEvent.addGlobalMonitorForEvents`. That function needs Accessibility permission. That function also receives all keystrokes of the system. The Carbon function needs no permission. The Carbon function receives only the registered combinations.
+
+The handler receives the press and the release of each key. A Hold pad needs the release.
 
 The C callback has no user data parameter. Therefore the dispatch table is in a singleton. The key of the table is the hotkey ID.
 

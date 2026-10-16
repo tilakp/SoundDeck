@@ -40,7 +40,8 @@ struct ContentView: View {
         .background(KeyboardHandler(
             onStop: { engine.stopAll() },
             onReplay: { attempt { try engine.replayLast(in: library) } },
-            onCharacter: triggerHotKey
+            onCharacter: triggerHotKey,
+            onRelease: releaseHotKey
         ))
         .fileImporter(
             isPresented: $showingFileImporter,
@@ -399,8 +400,9 @@ struct ContentView: View {
                                 isLastPlayed: engine.lastPlayedID == sound.id,
                                 play: {
                                     endEditing()
-                                    attempt { try engine.play(sound, in: library) }
+                                    attempt { try engine.trigger(sound, in: library) }
                                 },
+                                release: { engine.release(sound) },
                                 stop: { engine.stop(sound) },
                                 remove: {
                                     engine.stop(sound, fade: false)
@@ -496,7 +498,12 @@ struct ContentView: View {
 
     private func triggerHotKey(_ character: String) {
         guard let sound = library.sound(forHotKey: character) else { return }
-        attempt { try engine.play(sound, in: library) }
+        attempt { try engine.trigger(sound, in: library) }
+    }
+
+    private func releaseHotKey(_ character: String) {
+        guard let sound = library.sound(forHotKey: character) else { return }
+        engine.release(sound)
     }
 
     /// Ends text editing in the window. The keyboard monitor then gets the hotkeys again.
@@ -573,12 +580,11 @@ struct KeyboardHandler: NSViewRepresentable {
     let onStop: () -> Void
     let onReplay: () -> Void
     let onCharacter: (String) -> Void
+    let onRelease: (String) -> Void
 
     func makeNSView(context: Context) -> NSView {
         let view = KeyCatcher()
-        view.onStop = onStop
-        view.onReplay = onReplay
-        view.onCharacter = onCharacter
+        updateNSView(view, context: context)
         return view
     }
 
@@ -587,12 +593,14 @@ struct KeyboardHandler: NSViewRepresentable {
         view.onStop = onStop
         view.onReplay = onReplay
         view.onCharacter = onCharacter
+        view.onRelease = onRelease
     }
 
     final class KeyCatcher: NSView {
         var onStop: (() -> Void)?
         var onReplay: (() -> Void)?
         var onCharacter: ((String) -> Void)?
+        var onRelease: ((String) -> Void)?
         private var monitor: Any?
 
         override func viewDidMoveToWindow() {
@@ -600,7 +608,7 @@ struct KeyboardHandler: NSViewRepresentable {
             if let monitor { NSEvent.removeMonitor(monitor) }
             monitor = nil
             guard window != nil else { return }
-            monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            monitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .keyUp]) { [weak self] event in
                 guard let self, event.window === self.window, self.handle(event) else { return event }
                 return nil
             }
@@ -610,17 +618,29 @@ struct KeyboardHandler: NSViewRepresentable {
         private func handle(_ event: NSEvent) -> Bool {
             // Never swallow keys while the user is typing in a field.
             if window?.firstResponder is NSTextView { return false }
+            if event.type == .keyUp {
+                guard let character = Self.padCharacter(of: event) else { return false }
+                onRelease?(character)
+                return true
+            }
+            // A held key repeats. The pad plays one time for each press.
+            if event.isARepeat { return Self.padCharacter(of: event) != nil || [36, 49, 76].contains(event.keyCode) }
             switch event.keyCode {
             case 49: onStop?()          // space
             case 36, 76: onReplay?()    // return, keypad enter
             default:
-                guard !event.modifierFlags.contains(.command),
-                      let characters = event.charactersIgnoringModifiers,
-                      let first = characters.first,
-                      first.isLetter || first.isNumber else { return false }
-                onCharacter?(String(first))
+                guard let character = Self.padCharacter(of: event) else { return false }
+                onCharacter?(character)
             }
             return true
+        }
+
+        /// The letter or digit of a pad key. Nil for other keys and for Command shortcuts.
+        private static func padCharacter(of event: NSEvent) -> String? {
+            guard !event.modifierFlags.contains(.command),
+                  let first = event.charactersIgnoringModifiers?.first,
+                  first.isLetter || first.isNumber else { return nil }
+            return String(first)
         }
     }
 }

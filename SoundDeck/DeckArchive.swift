@@ -26,6 +26,13 @@ struct DeckArchive: Codable {
         var hotKey: String?
         /// Nil in files from version 2.1 of the application.
         var matchesLoudness: Bool?
+        var playMode: PlayMode?
+        var chokeGroup: Int?
+        var ducksOthers: Bool?
+        var fadeIn: Double?
+        var fadeOut: Double?
+        var pitch: Double?
+        var speed: Double?
         var audio: Data
     }
 
@@ -70,6 +77,13 @@ extension SoundLibrary {
                 emoji: sound.emoji,
                 hotKey: sound.hotKey,
                 matchesLoudness: sound.matchesLoudness,
+                playMode: sound.playMode,
+                chokeGroup: sound.chokeGroup,
+                ducksOthers: sound.ducksOthers,
+                fadeIn: sound.fadeIn,
+                fadeOut: sound.fadeOut,
+                pitch: sound.pitch,
+                speed: sound.speed,
                 audio: audio
             )
         }
@@ -105,6 +119,13 @@ extension SoundLibrary {
             item.emoji = entry.emoji
             item.hotKey = entry.hotKey
             item.matchesLoudness = entry.matchesLoudness ?? true
+            item.playMode = entry.playMode ?? .layer
+            item.chokeGroup = entry.chokeGroup
+            item.ducksOthers = entry.ducksOthers ?? false
+            item.fadeIn = entry.fadeIn ?? 0
+            item.fadeOut = entry.fadeOut ?? SoundItem.defaultFadeOut
+            item.pitch = entry.pitch ?? 0
+            item.speed = entry.speed ?? 1
             files[item.id] = entry.audio
             return item
         }

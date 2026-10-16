@@ -18,7 +18,11 @@ Sound Deck is a soundboard for macOS. Add your audio files to the deck. Press a 
 - Each sound has its own volume level. The deck also has a master volume.
 - The deck measures the loudness of each sound and plays all sounds at the same level. You can turn this off for one sound.
 - A limiter stops clipping when loud sounds play together.
-- Sounds fade out when they stop. They do not cut off.
+- Sounds fade out when they stop. They do not cut off. You can set the fade-in and fade-out time for each sound.
+- Each sound has a play mode: Play over, Restart, Toggle or Hold. A Hold sound plays while you hold its key or the mouse button.
+- A choke group stops the other sounds in the group, for example music beds.
+- A sound can duck the other sounds while it plays.
+- You can change the pitch and the speed of each sound.
 - You can trim a sound to a shorter section.
 - You can set a sound to loop.
 - The deck shows a waveform and a playhead during playback.

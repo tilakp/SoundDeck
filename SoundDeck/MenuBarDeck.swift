@@ -79,7 +79,8 @@ struct MenuBarDeck: View {
                         isPlaying: engine.playingIDs.contains(sound.id),
                         showsGlobalHint: globalHotKeys
                     ) {
-                        engine.playReportingErrors(sound, in: library)
+                        // A menu has no release, so a Hold pad plays to its end here.
+                        engine.triggerReportingErrors(sound, in: library)
                     }
                 }
             }

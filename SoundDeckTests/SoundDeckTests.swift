@@ -414,3 +414,91 @@ struct LibraryLoudnessTests {
         #expect(abs(try #require(applause.measuredLoudness) - -29.1) < 0.2)
     }
 }
+
+struct VoiceEnvelopeTests {
+    @Test func noFadeInStartsAtFullLevel() {
+        let envelope = VoiceEnvelope(fadeIn: 0)
+        #expect(envelope.gain == 1)
+        #expect(envelope.isMoving == false)
+    }
+
+    @Test func fadeInRisesOverItsTime() {
+        var envelope = VoiceEnvelope(fadeIn: 0.5)
+        #expect(envelope.gain == 0)
+        envelope.advance(by: 0.25)
+        #expect(abs(envelope.gain - 0.5) < 0.001)
+        envelope.advance(by: 0.5)
+        #expect(envelope.gain == 1)
+        #expect(envelope.isMoving == false)
+    }
+
+    @Test func fadeOutEndsSilent() {
+        var envelope = VoiceEnvelope(fadeIn: 0)
+        envelope.stop(fadeOut: 0.2)
+        envelope.advance(by: 0.1)
+        #expect(abs(envelope.gain - 0.5) < 0.001)
+        #expect(envelope.isSilent == false)
+        envelope.advance(by: 0.2)
+        #expect(envelope.isSilent)
+    }
+
+    @Test func zeroFadeOutStopsAtOnce() {
+        var envelope = VoiceEnvelope(fadeIn: 0)
+        envelope.stop(fadeOut: 0)
+        #expect(envelope.isSilent)
+    }
+
+    @Test func duckMovesToItsTargetAndBack() {
+        var envelope = VoiceEnvelope(fadeIn: 0)
+        envelope.duckTarget = AudioEngine.duckLevel
+        envelope.advance(by: 1)
+        #expect(envelope.gain == AudioEngine.duckLevel)
+        envelope.duckTarget = 1
+        envelope.advance(by: Double(VoiceEnvelope.duckTime) / 2)
+        #expect(envelope.gain > AudioEngine.duckLevel && envelope.gain < 1)
+        envelope.advance(by: 1)
+        #expect(envelope.gain == 1)
+    }
+}
+
+struct PlayBehaviorFileTests {
+    @Test func oldPadsGetTheDefaults() throws {
+        let json = #"{"id": "0E2699C1-F84B-4FFD-B2C3-15D1E1954DA4", "name": "Gong.wav", "isBundled": true}"#
+        let item = try JSONDecoder().decode(SoundItem.self, from: Data(json.utf8))
+        #expect(item.playMode == .layer)
+        #expect(item.chokeGroup == nil)
+        #expect(item.fadeOut == SoundItem.defaultFadeOut)
+        #expect(item.speed == 1)
+    }
+
+    @Test func unknownPlayModeIsNotAnError() throws {
+        let json = #"{"id": "0E2699C1-F84B-4FFD-B2C3-15D1E1954DA4", "name": "Gong.wav", "isBundled": true, "playMode": "loopUntilDone"}"#
+        let item = try JSONDecoder().decode(SoundItem.self, from: Data(json.utf8))
+        #expect(item.playMode == .layer)
+    }
+}
+
+@MainActor
+extension ArchiveTests {
+    @Test func playBehaviorSurvivesExportAndImport() throws {
+        let directory = try temporaryDirectory()
+        let library = SoundLibrary(store: SoundLibraryStore(directoryURL: directory))
+        let pad = library.sounds[0]
+        library.update(pad) {
+            $0.playMode = .hold
+            $0.chokeGroup = 2
+            $0.ducksOthers = true
+            $0.fadeIn = 0.3
+            $0.pitch = -5
+            $0.speed = 1.5
+        }
+        let imported = try library.importArchive(try library.exportArchive(of: library.activeDeck.id))
+        let copy = try #require(imported.sounds.first { $0.name == pad.name })
+        #expect(copy.playMode == .hold)
+        #expect(copy.chokeGroup == 2)
+        #expect(copy.ducksOthers)
+        #expect(copy.fadeIn == 0.3)
+        #expect(copy.pitch == -5)
+        #expect(copy.speed == 1.5)
+    }
+}

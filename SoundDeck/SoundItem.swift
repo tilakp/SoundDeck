@@ -23,6 +23,39 @@ enum SoundTint: String, Codable, CaseIterable, Identifiable {
     }
 }
 
+/// What a trigger does to a pad.
+enum PlayMode: String, Codable, CaseIterable, Identifiable {
+    /// Each trigger adds a voice. Voices play at the same time.
+    case layer
+    /// A trigger stops the voices of the pad and plays it from the start.
+    case restart
+    /// A trigger plays the pad. The next trigger stops it.
+    case toggle
+    /// The pad plays while the key or the mouse button is down.
+    case hold
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .layer: return "Play over"
+        case .restart: return "Restart"
+        case .toggle: return "Toggle"
+        case .hold: return "Hold"
+        }
+    }
+
+    /// The badge on the pad. The default mode has no badge.
+    var symbol: String? {
+        switch self {
+        case .layer: return nil
+        case .restart: return "arrow.counterclockwise"
+        case .toggle: return "power"
+        case .hold: return "hand.point.up.left"
+        }
+    }
+}
+
 struct SoundItem: Identifiable, Codable, Equatable {
     let id: UUID
     /// Display name. Defaults to the file name but is renamable.
@@ -58,6 +91,23 @@ struct SoundItem: Identifiable, Codable, Equatable {
     var matchesLoudness: Bool
 
     var isMeasured: Bool { measuredPeak != nil }
+
+    // MARK: Play behavior
+    var playMode: PlayMode
+    /// 1 to 4. A pad stops the other pads in its group. Nil means no group.
+    var chokeGroup: Int?
+    /// While this pad plays, the other pads go down by `AudioEngine.duckLevel`.
+    var ducksOthers: Bool
+    /// Seconds.
+    var fadeIn: Double
+    /// Seconds. A short fade prevents a click when a pad stops.
+    var fadeOut: Double
+    /// Semitones, from -12 to 12.
+    var pitch: Double
+    /// Playback rate, from 0.5 to 2.
+    var speed: Double
+
+    static let defaultFadeOut = 0.12
 
     /// The gain that `matchesLoudness` adds. The user volume multiplies it.
     var loudnessGain: Float {
@@ -100,6 +150,13 @@ struct SoundItem: Identifiable, Codable, Equatable {
         self.measuredLoudness = nil
         self.measuredPeak = nil
         self.matchesLoudness = true
+        self.playMode = .layer
+        self.chokeGroup = nil
+        self.ducksOthers = false
+        self.fadeIn = 0
+        self.fadeOut = Self.defaultFadeOut
+        self.pitch = 0
+        self.speed = 1
     }
 
     // Every added field is decoded leniently. Libraries written by earlier builds must
@@ -124,6 +181,13 @@ struct SoundItem: Identifiable, Codable, Equatable {
         measuredLoudness = try c.decodeIfPresent(Double.self, forKey: .measuredLoudness)
         measuredPeak = try c.decodeIfPresent(Float.self, forKey: .measuredPeak)
         matchesLoudness = try c.decodeIfPresent(Bool.self, forKey: .matchesLoudness) ?? true
+        playMode = (try? c.decodeIfPresent(PlayMode.self, forKey: .playMode)) ?? .layer
+        chokeGroup = try c.decodeIfPresent(Int.self, forKey: .chokeGroup)
+        ducksOthers = try c.decodeIfPresent(Bool.self, forKey: .ducksOthers) ?? false
+        fadeIn = try c.decodeIfPresent(Double.self, forKey: .fadeIn) ?? 0
+        fadeOut = try c.decodeIfPresent(Double.self, forKey: .fadeOut) ?? Self.defaultFadeOut
+        pitch = try c.decodeIfPresent(Double.self, forKey: .pitch) ?? 0
+        speed = try c.decodeIfPresent(Double.self, forKey: .speed) ?? 1
     }
 
     /// Initial for the button badge when no emoji is set.

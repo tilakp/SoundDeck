@@ -30,7 +30,7 @@ final class GlobalHotKeys {
 
     private var handler: EventHandlerRef?
     private var registered: [UInt32: EventHotKeyRef] = [:]
-    private var actions: [UInt32: () -> Void] = [:]
+    private var actions: [UInt32: (press: () -> Void, release: () -> Void)] = [:]
     private var nextID: UInt32 = 1
     private let signature: OSType = 0x53444B31 // 'SDK1'
 
@@ -41,7 +41,11 @@ final class GlobalHotKeys {
     /// Installs the Carbon event handler. Safe to call repeatedly.
     private func installHandlerIfNeeded() {
         guard handler == nil else { return }
-        var spec = EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed))
+        // A Hold pad needs the release of the key too.
+        var specs = [
+            EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed)),
+            EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyReleased)),
+        ]
         InstallEventHandler(
             GetApplicationEventTarget(),
             { _, event, _ -> OSStatus in
@@ -56,28 +60,30 @@ final class GlobalHotKeys {
                     &hotKeyID
                 )
                 guard status == noErr else { return status }
+                let released = GetEventKind(event) == UInt32(kEventHotKeyReleased)
                 // Carbon calls back on the main thread, but hop explicitly so the
                 // actor isolation is provable rather than assumed.
                 DispatchQueue.main.async {
                     MainActor.assumeIsolated {
-                        GlobalHotKeys.shared.fire(id: hotKeyID.id)
+                        GlobalHotKeys.shared.fire(id: hotKeyID.id, released: released)
                     }
                 }
                 return noErr
             },
-            1,
-            &spec,
+            specs.count,
+            &specs,
             nil,
             &handler
         )
     }
 
-    private func fire(id: UInt32) {
-        actions[id]?()
+    private func fire(id: UInt32, released: Bool) {
+        guard let action = actions[id] else { return }
+        released ? action.release() : action.press()
     }
 
     /// Replaces every registration with one derived from the current deck.
-    func rebind(_ bindings: [(key: String, action: () -> Void)]) {
+    func rebind(_ bindings: [(key: String, press: () -> Void, release: () -> Void)]) {
         unregisterAll()
         guard isEnabled else { return }
         installHandlerIfNeeded()
@@ -91,7 +97,7 @@ final class GlobalHotKeys {
             let status = RegisterEventHotKey(code, Self.modifiers, hotKeyID, GetApplicationEventTarget(), 0, &ref)
             if status == noErr, let ref {
                 registered[id] = ref
-                actions[id] = binding.action
+                actions[id] = (binding.press, binding.release)
             } else if status != noErr {
                 // Most often because another app already owns the combination.
                 print("[DEBUG] Could not register global hotkey \(binding.key) (OSStatus \(status))")

@@ -6,6 +6,8 @@ struct SoundTile: View {
     let isPlaying: Bool
     let isLastPlayed: Bool
     let play: () -> Void
+    /// The mouse button came up. A Hold pad stops.
+    let release: () -> Void
     let stop: () -> Void
     let remove: () -> Void
     let update: ((inout SoundItem) -> Void) -> Void
@@ -20,7 +22,8 @@ struct SoundTile: View {
     private var tint: Color { sound.tint.color }
 
     var body: some View {
-        Button(action: play) {
+        // A Hold pad plays on mouse down, in the gesture below. A button acts on mouse up.
+        Button(action: { if sound.playMode != .hold { play() } }) {
             VStack(alignment: .leading, spacing: 6) {
                 header
                 Spacer(minLength: 0)
@@ -42,8 +45,15 @@ struct SoundTile: View {
         // Momentary press feedback; the button's own action still fires the sound.
         .simultaneousGesture(
             DragGesture(minimumDistance: 0)
-                .onChanged { _ in if !pressed { pressed = true } }
-                .onEnded { _ in pressed = false }
+                .onChanged { _ in
+                    guard !pressed else { return }
+                    pressed = true
+                    if sound.playMode == .hold { play() }
+                }
+                .onEnded { _ in
+                    pressed = false
+                    if sound.playMode == .hold { release() }
+                }
         )
         .animation(Theme.press, value: pressed)
         .animation(Theme.hover, value: hovering)
@@ -89,6 +99,18 @@ struct SoundTile: View {
     private var footer: some View {
         HStack(spacing: 6) {
             if let key = sound.hotKey { KeyCap(key: key) }
+            if let symbol = sound.playMode.symbol {
+                Image(systemName: symbol)
+                    .font(.system(size: 9, weight: .bold))
+                    .foregroundStyle(Theme.textTertiary)
+                    .help(sound.playMode.label)
+            }
+            if let group = sound.chokeGroup {
+                Text("G\(group)")
+                    .font(.system(size: 8.5, weight: .bold, design: .rounded))
+                    .foregroundStyle(Theme.textTertiary)
+                    .help("Choke group \(group)")
+            }
             if sound.loops {
                 Image(systemName: "repeat")
                     .font(.system(size: 9, weight: .bold))

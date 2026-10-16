@@ -16,6 +16,13 @@ struct SoundInspector: View {
     @State private var volume: Float = 1
     @State private var loops = false
     @State private var matchesLoudness = true
+    @State private var playMode: PlayMode = .layer
+    @State private var chokeGroup = 0
+    @State private var ducksOthers = false
+    @State private var fadeIn = 0.0
+    @State private var fadeOut = SoundItem.defaultFadeOut
+    @State private var pitch = 0.0
+    @State private var speed = 1.0
     @State private var tint: SoundTint = .none
     @State private var emoji: String = ""
     @State private var hotKey: String = ""
@@ -32,6 +39,7 @@ struct SoundInspector: View {
         VStack(alignment: .leading, spacing: 16) {
             title
             trimSection
+            playbackSection
             settingsGrid
             footer
         }
@@ -113,6 +121,68 @@ struct SoundInspector: View {
                     .font(.system(size: 10.5, design: .rounded))
                     .foregroundStyle(SoundTint.rose.color)
             }
+        }
+    }
+
+    private var playbackSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Picker("", selection: $playMode) {
+                ForEach(PlayMode.allCases) { mode in Text(mode.label).tag(mode) }
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .help("Play over: each press adds a sound. Restart: plays from the start. Toggle: the next press stops it. Hold: plays while you hold the key.")
+
+            HStack(spacing: 14) {
+                Picker("Choke group", selection: $chokeGroup) {
+                    Text("No group").tag(0)
+                    ForEach(1...4, id: \.self) { group in Text("Group \(group)").tag(group) }
+                }
+                .labelsHidden()
+                .frame(width: 110)
+                .controlSize(.small)
+                .help("A pad stops the other pads in its group.")
+
+                Toggle(isOn: $ducksOthers) {
+                    Text("Duck other pads").font(.system(size: 11.5, design: .rounded))
+                }
+                .toggleStyle(.switch)
+                .controlSize(.mini)
+                .tint(tint.color)
+                .help("While this pad plays, the other pads go down by 12 dB.")
+            }
+
+            HStack(spacing: 16) {
+                labeledSlider("Fade in", value: $fadeIn, in: 0...2, text: String(format: "%.2f s", fadeIn))
+                labeledSlider("Fade out", value: $fadeOut, in: 0...2, text: String(format: "%.2f s", fadeOut))
+            }
+            HStack(spacing: 16) {
+                labeledSlider("Pitch", value: $pitch, in: -12...12, step: 1, text: String(format: "%+.0f st", pitch))
+                labeledSlider("Speed", value: $speed, in: 0.5...2, text: String(format: "%.2fx", speed))
+            }
+        }
+    }
+
+    private func labeledSlider(_ title: String, value: Binding<Double>, in range: ClosedRange<Double>,
+                               step: Double? = nil, text: String) -> some View {
+        HStack(spacing: 6) {
+            Text(title)
+                .font(.system(size: 10.5, design: .rounded))
+                .foregroundStyle(Theme.textSecondary)
+                .frame(width: 48, alignment: .leading)
+            Group {
+                if let step {
+                    Slider(value: value, in: range, step: step)
+                } else {
+                    Slider(value: value, in: range)
+                }
+            }
+            .controlSize(.small)
+            .tint(tint.color)
+            Text(text)
+                .font(.system(size: 10, design: .monospaced))
+                .foregroundStyle(Theme.textTertiary)
+                .frame(width: 44, alignment: .trailing)
         }
     }
 
@@ -211,6 +281,13 @@ struct SoundInspector: View {
         volume = sound.volume
         loops = sound.loops
         matchesLoudness = sound.matchesLoudness
+        playMode = sound.playMode
+        chokeGroup = sound.chokeGroup ?? 0
+        ducksOthers = sound.ducksOthers
+        fadeIn = sound.fadeIn
+        fadeOut = sound.fadeOut
+        pitch = sound.pitch
+        speed = sound.speed
         tint = sound.tint
         emoji = sound.emoji ?? ""
         hotKey = sound.hotKey ?? ""
@@ -243,6 +320,7 @@ struct SoundInspector: View {
         preview.volume = volume
         preview.loops = false
         preview.matchesLoudness = matchesLoudness
+        applyPlayback(to: &preview)
         do {
             try engine.play(preview, in: library)
             previewError = nil
@@ -258,6 +336,7 @@ struct SoundInspector: View {
             item.volume = volume
             item.loops = loops
             item.matchesLoudness = matchesLoudness
+            applyPlayback(to: &item)
             item.tint = tint
             item.emoji = emoji.isEmpty ? nil : emoji
             item.hotKey = hotKey.isEmpty ? nil : hotKey
@@ -268,6 +347,16 @@ struct SoundInspector: View {
             item.trimEnd = (trimEnd >= duration - 0.01) ? nil : trimEnd
         }
         dismiss()
+    }
+
+    private func applyPlayback(to item: inout SoundItem) {
+        item.playMode = playMode
+        item.chokeGroup = chokeGroup == 0 ? nil : chokeGroup
+        item.ducksOthers = ducksOthers
+        item.fadeIn = fadeIn
+        item.fadeOut = fadeOut
+        item.pitch = pitch
+        item.speed = speed
     }
 
     /// For example: "-29.1 LUFS. Match loudness adds +11.1 dB."

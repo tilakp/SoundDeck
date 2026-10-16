@@ -28,21 +28,38 @@ final class AudioEngine: ObservableObject {
         let scopedURL: URL?
         let duration: Double
         let startOffset: Double
+        /// The time-pitch node, when the pad changes its pitch or speed.
+        let timePitch: AVAudioUnitTimePitch?
         /// The gain that moves the pad to the target loudness. The user volume multiplies it.
         let loudnessGain: Float
+        var volume: Float
+        let ducksOthers: Bool
+        let chokeGroup: Int?
+        let fadeOut: Double
+        var envelope: VoiceEnvelope
         var startedAt: TimeInterval
-        var fadeTimer: Timer?
 
-        init(soundID: UUID, player: AVAudioPlayerNode, mixer: AVAudioMixerNode,
-             scopedURL: URL?, duration: Double, startOffset: Double, loudnessGain: Float) {
-            self.soundID = soundID
+        init(sound: SoundItem, player: AVAudioPlayerNode, mixer: AVAudioMixerNode, timePitch: AVAudioUnitTimePitch?,
+             scopedURL: URL?, duration: Double, startOffset: Double) {
+            self.soundID = sound.id
             self.player = player
             self.mixer = mixer
+            self.timePitch = timePitch
             self.scopedURL = scopedURL
             self.duration = duration
             self.startOffset = startOffset
-            self.loudnessGain = loudnessGain
+            self.loudnessGain = sound.loudnessGain
+            self.volume = sound.volume
+            self.ducksOthers = sound.ducksOthers
+            self.chokeGroup = sound.chokeGroup
+            self.fadeOut = sound.fadeOut
+            self.envelope = VoiceEnvelope(fadeIn: sound.fadeIn)
             self.startedAt = CACurrentMediaTime()
+        }
+
+        /// A mixer volume above 1 boosts the signal. The limiter catches the peaks of several voices.
+        func applyGain() {
+            mixer.outputVolume = volume * loudnessGain * envelope.gain
         }
     }
 
@@ -77,7 +94,7 @@ final class AudioEngine: ObservableObject {
     /// The playhead updates 30 times each second. It is in a separate object, so that
     /// only the monitor waveform draws again, not every view that observes the engine.
     let playhead = Playhead()
-    /// The last error from `playReportingErrors`. A successful play clears it.
+    /// The last error from `triggerReportingErrors`. A successful play clears it.
     @Published private(set) var lastError: String?
     @Published private(set) var focusedSoundID: UUID?
     @Published private(set) var waveform: [Float]?
@@ -93,9 +110,8 @@ final class AudioEngine: ObservableObject {
     /// `nil` means "follow the system default output".
     @Published private(set) var selectedDeviceUID: String?
 
-    /// Seconds to ramp down over when stopping. A hard cut on a resonant sample
-    /// clicks audibly; a short ramp does not.
-    var fadeOutDuration: Double = 0.12
+    /// The level of the other pads while a pad with `ducksOthers` plays. 0.25 is -12 dB.
+    static let duckLevel: Float = 0.25
 
     private static let masterVolumeKey = "SoundDeckMasterVolume"
     private static let outputDeviceKey = "SoundDeckOutputDeviceUID"
@@ -111,6 +127,9 @@ final class AudioEngine: ObservableObject {
     ))
     private var voices: [UUID: Voice] = [:]
     private var progressTimer: Timer?
+    /// Runs while a fade or a duck change runs.
+    private var envelopeTimer: Timer?
+    private var lastEnvelopeStep: CFTimeInterval = 0
     private var waveformToken = UUID()
     /// The envelope of each sound that played. Thus a trigger does not decode the file again.
     private var waveformCache: [UUID: [Float]] = [:]
@@ -179,18 +198,32 @@ final class AudioEngine: ObservableObject {
 
         let player = AVAudioPlayerNode()
         let mixer = AVAudioMixerNode()
-        // A mixer volume above 1 boosts the signal. The limiter catches the peaks of several voices.
-        mixer.outputVolume = sound.volume * sound.loudnessGain
         engine.attach(player)
         engine.attach(mixer)
-        engine.connect(player, to: mixer, format: file.processingFormat)
+        // Only a pad that changes its pitch or speed gets the time-pitch node.
+        var timePitch: AVAudioUnitTimePitch?
+        if sound.pitch != 0 || sound.speed != 1 {
+            let unit = AVAudioUnitTimePitch()
+            unit.pitch = Float(sound.pitch * 100)
+            unit.rate = Float(sound.speed)
+            engine.attach(unit)
+            engine.connect(player, to: unit, format: file.processingFormat)
+            engine.connect(unit, to: mixer, format: file.processingFormat)
+            timePitch = unit
+        } else {
+            engine.connect(player, to: mixer, format: file.processingFormat)
+        }
         engine.connect(mixer, to: engine.mainMixerNode, format: file.processingFormat)
+        let detachNodes = { [engine] in
+            engine.detach(player)
+            engine.detach(mixer)
+            if let timePitch { engine.detach(timePitch) }
+        }
 
         do {
             try startEngineIfNeeded()
         } catch {
-            engine.detach(player)
-            engine.detach(mixer)
+            detachNodes()
             if didAccess { url.stopAccessingSecurityScopedResource() }
             throw PlaybackError.engineFailed(underlying: error)
         }
@@ -204,26 +237,36 @@ final class AudioEngine: ObservableObject {
         let (start, end, startFrame, frameCount) = (window.start, window.end, window.startFrame, window.frameCount)
 
         guard frameCount > 0 else {
-            engine.detach(player)
-            engine.detach(mixer)
+            detachNodes()
             if didAccess { url.stopAccessingSecurityScopedResource() }
             throw PlaybackError.emptyTrim(name: sound.name)
         }
 
+        // A pad stops the other pads in its choke group.
+        if let group = sound.chokeGroup {
+            for other in Array(voices.values) where other.chokeGroup == group && other.soundID != sound.id {
+                beginFadeOut(other)
+            }
+        }
+
         let voice = Voice(
-            soundID: sound.id,
+            sound: sound,
             player: player,
             mixer: mixer,
+            timePitch: timePitch,
             scopedURL: didAccess ? url : nil,
-            duration: end - start,
-            startOffset: start,
-            loudnessGain: sound.loudnessGain
+            // A faster pad ends sooner. The playhead uses this duration.
+            duration: (end - start) / max(0.01, sound.speed),
+            startOffset: start
         )
+        voice.applyGain()
 
         schedule(file: file, on: voice, startFrame: startFrame, frameCount: frameCount, loops: sound.loops)
 
         player.play()
         voices[voice.id] = voice
+        updateDucking()
+        if voice.envelope.isMoving { startEnvelopeTimer() }
         playingIDs.insert(sound.id)
         lastPlayedID = sound.id
         focusedSoundID = sound.id
@@ -232,11 +275,34 @@ final class AudioEngine: ObservableObject {
         loadWaveform(for: url, soundID: sound.id)
     }
 
-    /// Plays a sound and keeps an error in `lastError`. Use it where no alert can show,
-    /// for example the menu bar deck and the global hotkeys.
-    func playReportingErrors(_ sound: SoundItem, in library: SoundLibrary) {
-        do {
+    /// Plays a pad as its play mode says. Every trigger of a pad uses this function.
+    /// The inspector preview uses `play`, so it always plays.
+    func trigger(_ sound: SoundItem, in library: SoundLibrary) throws {
+        switch sound.playMode {
+        case .layer, .hold:
             try play(sound, in: library)
+        case .restart:
+            stop(sound)
+            try play(sound, in: library)
+        case .toggle:
+            if voices.values.contains(where: { $0.soundID == sound.id && !$0.envelope.isStopping }) {
+                stop(sound)
+            } else {
+                try play(sound, in: library)
+            }
+        }
+    }
+
+    /// The key or the mouse button came up. A Hold pad stops.
+    func release(_ sound: SoundItem) {
+        if sound.playMode == .hold { stop(sound) }
+    }
+
+    /// Triggers a pad and keeps an error in `lastError`. Use it where no alert can show,
+    /// for example the menu bar deck and the global hotkeys.
+    func triggerReportingErrors(_ sound: SoundItem, in library: SoundLibrary) {
+        do {
+            try trigger(sound, in: library)
         } catch {
             print("[DEBUG] Could not play \(sound.name): \(error)")
             lastError = error.localizedDescription
@@ -298,8 +364,8 @@ final class AudioEngine: ObservableObject {
         let targets = voices.values.filter { sound == nil || $0.soundID == sound!.id }
         guard !targets.isEmpty else { return }
         for voice in targets {
-            if fade && fadeOutDuration > 0 {
-                fadeOut(voice)
+            if fade {
+                beginFadeOut(voice)
             } else {
                 retire(voice)
             }
@@ -319,41 +385,66 @@ final class AudioEngine: ObservableObject {
     /// Live gain change while a sound is playing.
     func setVolume(_ volume: Float, for soundID: UUID) {
         for voice in voices.values where voice.soundID == soundID {
-            voice.mixer.outputVolume = volume * voice.loudnessGain
+            voice.volume = volume
+            voice.applyGain()
         }
     }
 
     // MARK: - Voice lifecycle
 
-    private func fadeOut(_ voice: Voice) {
-        voice.fadeTimer?.invalidate()
-        let steps = 12
-        let interval = fadeOutDuration / Double(steps)
-        let startVolume = voice.mixer.outputVolume
-        var step = 0
-        let timer = Timer(timeInterval: interval, repeats: true) { [weak self] timer in
-            step += 1
-            Task { @MainActor in
-                guard let self else { timer.invalidate(); return }
-                guard self.voices[voice.id] != nil else { timer.invalidate(); return }
-                if step >= steps {
-                    timer.invalidate()
-                    self.retire(voice)
-                } else {
-                    voice.mixer.outputVolume = startVolume * Float(1 - Double(step) / Double(steps))
-                }
-            }
+    /// Starts the fade-out of a voice. The envelope timer retires it at the end.
+    private func beginFadeOut(_ voice: Voice) {
+        voice.envelope.stop(fadeOut: voice.fadeOut)
+        if voice.envelope.isSilent {
+            retire(voice)
+            return
+        }
+        updateDucking()
+        startEnvelopeTimer()
+    }
+
+    /// While a pad with `ducksOthers` plays, the other pads go down to `duckLevel`.
+    private func updateDucking() {
+        let isDucking = voices.values.contains { $0.ducksOthers && !$0.envelope.isStopping }
+        for voice in voices.values where !voice.ducksOthers {
+            voice.envelope.duckTarget = isDucking ? Self.duckLevel : 1
+        }
+        if voices.values.contains(where: { $0.envelope.isMoving }) { startEnvelopeTimer() }
+    }
+
+    private func startEnvelopeTimer() {
+        guard envelopeTimer == nil else { return }
+        lastEnvelopeStep = CACurrentMediaTime()
+        let timer = Timer(timeInterval: 0.01, repeats: true) { [weak self] _ in
+            Task { @MainActor in self?.stepEnvelopes() }
         }
         // The common modes keep the timer running while a menu is open.
         RunLoop.main.add(timer, forMode: .common)
-        voice.fadeTimer = timer
+        envelopeTimer = timer
+    }
+
+    private func stopEnvelopeTimer() {
+        envelopeTimer?.invalidate()
+        envelopeTimer = nil
+    }
+
+    private func stepEnvelopes() {
+        let now = CACurrentMediaTime()
+        let elapsed = now - lastEnvelopeStep
+        lastEnvelopeStep = now
+        for voice in Array(voices.values) {
+            voice.envelope.advance(by: elapsed)
+            voice.applyGain()
+            if voice.envelope.isSilent { retire(voice) }
+        }
+        if !voices.values.contains(where: { $0.envelope.isMoving }) { stopEnvelopeTimer() }
     }
 
     private func retire(_ voice: Voice) {
-        voice.fadeTimer?.invalidate()
         voice.player.stop()
         engine.detach(voice.player)
         engine.detach(voice.mixer)
+        if let timePitch = voice.timePitch { engine.detach(timePitch) }
         voice.scopedURL?.stopAccessingSecurityScopedResource()
         voices.removeValue(forKey: voice.id)
 
@@ -361,7 +452,9 @@ final class AudioEngine: ObservableObject {
         if !voices.values.contains(where: { $0.soundID == voice.soundID }) {
             playingIDs.remove(voice.soundID)
         }
+        updateDucking()
         if voices.isEmpty {
+            stopEnvelopeTimer()
             stopProgressTimer()
             playhead.progress = 0
             waveform = nil

@@ -44,14 +44,19 @@ final class HotKeyBinder: ObservableObject {
         }
     }
 
-    /// The binder that the application uses. It plays a pad through the engine.
+    /// The binder that the application uses. It triggers a pad through the engine.
     static func live(library: SoundLibrary, engine: AudioEngine) -> HotKeyBinder {
         HotKeyBinder(library: library) { [weak library, weak engine] keys in
             GlobalHotKeys.shared.rebind(keys.map { key in
-                (key.key, {
-                    guard let library, let engine, let sound = library.sound(withID: key.soundID) else { return }
-                    engine.playReportingErrors(sound, in: library)
-                })
+                (key: key.key,
+                 press: {
+                     guard let library, let engine, let sound = library.sound(withID: key.soundID) else { return }
+                     engine.triggerReportingErrors(sound, in: library)
+                 },
+                 release: {
+                     guard let library, let engine, let sound = library.sound(withID: key.soundID) else { return }
+                     engine.release(sound)
+                 })
             })
         }
     }
