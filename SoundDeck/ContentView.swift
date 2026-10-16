@@ -16,6 +16,9 @@ struct ContentView: View {
     @State private var renamingDeckID: UUID?
     @State private var deckName = ""
     @State private var deletingDeck: Deck?
+    @State private var notice = TransientNotice()
+    @State private var showingShortcuts = false
+    @FocusState private var searchFocused: Bool
 
     private static let audioExtensions: Set<String> = [
         "wav", "aiff", "aif", "mp3", "m4a", "aac", "caf", "flac", "ogg", "wma"
@@ -30,7 +33,6 @@ struct ContentView: View {
                 monitor
                 deckBar
                 deck
-                footer
             }
             .padding(Theme.Spacing.l)
 
@@ -39,7 +41,7 @@ struct ContentView: View {
         .frame(minWidth: 720, minHeight: 560)
         .background(KeyboardHandler(
             onStop: { engine.stopAll() },
-            onReplay: { attempt { try engine.replayLast(in: library) } },
+            onReplay: replayLast,
             onCharacter: triggerHotKey,
             onRelease: releaseHotKey
         ))
@@ -56,6 +58,10 @@ struct ContentView: View {
             }
         }
         .onDrop(of: [.fileURL], isTargeted: $isDropTargeted, perform: handleDrop)
+        // Errors from the menu bar deck and the global hotkeys also show in the monitor strip.
+        .onChange(of: engine.lastError) { _, message in
+            if let message { flash(message) }
+        }
         .alert("Something went wrong", isPresented: $showAlert) {
             Button("OK", role: .cancel) {}
         } message: {
@@ -108,35 +114,61 @@ struct ContentView: View {
 
     private var headerSides: some View {
         HStack(spacing: Theme.Spacing.m) {
-            HStack(spacing: Theme.Spacing.m) {
-                ZStack {
-                    RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous)
-                        .fill(Theme.accentGradient)
-                        .frame(width: 34, height: 34)
-                        .shadow(color: Theme.accent.opacity(0.45), radius: 9, y: 3)
-                    Image(systemName: "waveform")
-                        .font(Theme.Font.title(.bold))
-                        .foregroundStyle(.white)
-                }
-                VStack(alignment: .leading, spacing: 0) {
-                    Text("Sound Deck")
-                        .font(Theme.Font.title(.bold))
-                        .foregroundStyle(Theme.textPrimary)
-                    Text("\(library.sounds.count) sound\(library.sounds.count == 1 ? "" : "s")")
-                        .font(Theme.Font.caption(.medium))
-                        .foregroundStyle(Theme.textTertiary)
-                }
-            }
+            // The window has no title bar. This quiet wordmark keeps the name visible.
+            Text("Sound Deck")
+                .font(Theme.Font.body(.semibold))
+                .foregroundStyle(Theme.textSecondary)
+
+            shortcutsButton
 
             // Reserves the centre for the overlaid search field.
             Spacer(minLength: 270)
 
             outputMenu
 
-            ChromeButton(title: "Add", icon: "plus", prominent: true) {
-                showingFileImporter = true
-            }
+            addMenu
         }
+    }
+
+    /// The keyboard shortcuts of the main window, in a small popover.
+    private var shortcutsButton: some View {
+        Button {
+            showingShortcuts.toggle()
+        } label: {
+            Image(systemName: "questionmark.circle")
+                .font(Theme.Font.body())
+                .foregroundStyle(Theme.textTertiary)
+        }
+        .buttonStyle(.plain)
+        .help("Keyboard shortcuts")
+        .popover(isPresented: $showingShortcuts, arrowEdge: .bottom) {
+            ShortcutList()
+        }
+    }
+
+    /// Adds sounds. The divider leaves space for more sources later.
+    private var addMenu: some View {
+        Menu {
+            Button("Add Files…") { showingFileImporter = true }
+            Button("Record…") { recording = true }
+            Divider()
+        } label: {
+            HStack(spacing: Theme.Spacing.s) {
+                Image(systemName: "plus")
+                Text("Add")
+            }
+            .font(Theme.Font.body(.semibold))
+            .foregroundStyle(Color.white)
+            .padding(.horizontal, Theme.Spacing.m)
+            .padding(.vertical, Theme.Spacing.s)
+            .background(
+                RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous)
+                    .fill(Theme.accent)
+            )
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .fixedSize()
     }
 
     private var searchField: some View {
@@ -148,6 +180,7 @@ struct ContentView: View {
                 .textFieldStyle(.plain)
                 .font(Theme.Font.body())
                 .foregroundStyle(Theme.textPrimary)
+                .focused($searchFocused)
                 // Give the keys back to the deck. If not, the digits go into the field.
                 .onSubmit(endEditing)
                 .onExitCommand(perform: endEditing)
@@ -171,6 +204,14 @@ struct ContentView: View {
                     RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous)
                         .strokeBorder(Theme.stroke, lineWidth: 1)
                 )
+        )
+        .background(
+            // Command-F puts the focus in the search field.
+            Button("Find") { searchFocused = true }
+                .keyboardShortcut("f", modifiers: .command)
+                .opacity(0)
+                .frame(width: 0, height: 0)
+                .accessibilityHidden(true)
         )
     }
 
@@ -201,7 +242,7 @@ struct ContentView: View {
             Button("Refresh Devices") { engine.refreshDevices() }
         } label: {
             HStack(spacing: Theme.Spacing.s) {
-                Image(systemName: "hifispeaker.and.appletv")
+                Image(systemName: "speaker.wave.2")
                     .font(Theme.Font.caption(.semibold))
                 Text(engine.selectedDeviceName)
                     .font(Theme.Font.body(.medium))
@@ -240,28 +281,22 @@ struct ContentView: View {
     private var monitor: some View {
         GlassPanel {
             HStack(spacing: Theme.Spacing.l) {
-                VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
-                    Text(nowPlayingTitle)
-                        .font(Theme.Font.body(.semibold))
-                        .foregroundStyle(engine.playingIDs.isEmpty ? Theme.textTertiary : Theme.textPrimary)
-                        .lineLimit(1)
-                    Text(engine.playingIDs.isEmpty ? "Idle" : "\(engine.playingIDs.count) playing")
-                        .font(Theme.Font.caption(.medium))
-                        .foregroundStyle(Theme.textTertiary)
-                }
-                .frame(width: 150, alignment: .leading)
+                Text(nowPlayingTitle)
+                    .font(Theme.Font.body(.semibold))
+                    .foregroundStyle(engine.playingIDs.isEmpty ? Theme.textTertiary : Theme.textPrimary)
+                    .lineLimit(1)
+                    .frame(width: 150, alignment: .leading)
 
-                Group {
-                    if let samples = engine.waveform {
-                        MonitorWaveform(samples: samples, playhead: engine.playhead, tint: focusedTint)
-                    } else {
-                        WaveformPlaceholder()
-                    }
-                }
-                .frame(height: 44)
-                .frame(maxWidth: .infinity)
+                monitorCentre
+                    .frame(height: 44)
+                    .frame(maxWidth: .infinity)
 
                 masterVolume
+
+                // Stop All stays in this place in all states, so the hand finds it.
+                StopAllButton(active: !engine.playingIDs.isEmpty) {
+                    engine.stopAll()
+                }
             }
             .padding(.horizontal, Theme.Spacing.l)
             .padding(.vertical, Theme.Spacing.m)
@@ -281,12 +316,36 @@ struct ContentView: View {
         }
     }
 
+    /// A playback error for some seconds, else the waveform, else one quiet hairline.
+    @ViewBuilder private var monitorCentre: some View {
+        if let message = notice.text {
+            HStack(spacing: Theme.Spacing.s) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                Text(message)
+                    .lineLimit(2)
+            }
+            .font(Theme.Font.body(.medium))
+            .foregroundStyle(Theme.danger)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .transition(.opacity)
+        } else if let samples = engine.waveform {
+            MonitorWaveform(samples: samples, playhead: engine.playhead, tint: focusedTint)
+        } else {
+            Rectangle()
+                .fill(Theme.stroke)
+                .frame(height: 1)
+        }
+    }
+
+    /// One label for the monitor. "Idle" when nothing plays.
     private var nowPlayingTitle: String {
+        guard !engine.playingIDs.isEmpty else { return "Idle" }
+        let others = engine.playingIDs.count - 1
         guard let id = engine.focusedSoundID,
               let sound = library.sound(withID: id) else {
-            return "Nothing playing"
+            return "\(engine.playingIDs.count) playing"
         }
-        return sound.name
+        return others > 0 ? "\(sound.name) +\(others)" : sound.name
     }
 
     private var focusedTint: Color {
@@ -297,34 +356,28 @@ struct ContentView: View {
 
     // MARK: - Deck bar
 
-    /// The decks, with the Record button at the end. Keys play pads of the active deck only.
+    /// The decks. Keys play pads of the active deck only.
     private var deckBar: some View {
-        HStack(spacing: Theme.Spacing.s) {
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: Theme.Spacing.s) {
-                    ForEach(library.decks) { deck in deckChip(deck) }
-                    Menu {
-                        Button("New Deck") {
-                            let deck = library.addDeck(named: "Deck")
-                            startRenaming(deck)
-                        }
-                        Button("Import Deck…", action: importDeck)
-                    } label: {
-                        Image(systemName: "plus")
-                            .font(Theme.Font.caption(.semibold))
-                            .foregroundStyle(Theme.textSecondary)
-                            .frame(width: 26, height: 26)
-                            .background(RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous).fill(Theme.surface))
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: Theme.Spacing.s) {
+                ForEach(library.decks) { deck in deckChip(deck) }
+                Menu {
+                    Button("New Deck") {
+                        let deck = library.addDeck(named: "Deck")
+                        startRenaming(deck)
                     }
-                    .menuStyle(.borderlessButton)
-                    .menuIndicator(.hidden)
-                    .fixedSize()
-                    .help("New or imported deck")
+                    Button("Import Deck…", action: importDeck)
+                } label: {
+                    Image(systemName: "plus")
+                        .font(Theme.Font.caption(.semibold))
+                        .foregroundStyle(Theme.textSecondary)
+                        .frame(width: 26, height: 26)
+                        .background(RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous).fill(Theme.surface))
                 }
-            }
-
-            ChromeButton(title: "Record", icon: "mic.fill") {
-                recording = true
+                .menuStyle(.borderlessButton)
+                .menuIndicator(.hidden)
+                .fixedSize()
+                .help("New or imported deck")
             }
         }
     }
@@ -369,7 +422,7 @@ struct ContentView: View {
         panel.allowedContentTypes = [DeckArchive.contentType]
         panel.nameFieldStringValue = "\(deck.name).\(DeckArchive.fileExtension)"
         guard panel.runModal() == .OK, let url = panel.url else { return }
-        attempt { try library.exportArchive(of: deck.id).write(to: url, options: .atomic) }
+        attemptWithAlert { try library.exportArchive(of: deck.id).write(to: url, options: .atomic) }
     }
 
     private func importDeck() {
@@ -377,7 +430,7 @@ struct ContentView: View {
         panel.allowedContentTypes = [DeckArchive.contentType]
         panel.allowsMultipleSelection = false
         guard panel.runModal() == .OK, let url = panel.url else { return }
-        attempt { try library.importArchive(Data(contentsOf: url)) }
+        attemptWithAlert { try library.importArchive(Data(contentsOf: url)) }
     }
 
     // MARK: - Deck
@@ -448,30 +501,7 @@ struct ContentView: View {
         }
     }
 
-    // MARK: - Footer
-
-    private var footer: some View {
-        HStack(spacing: Theme.Spacing.m) {
-            HStack(spacing: Theme.Spacing.xs) {
-                KeyCap(key: "space")
-                Text("stop")
-                KeyCap(key: "⏎")
-                Text("replay")
-                KeyCap(key: "1-9")
-                Text("trigger")
-            }
-            .font(Theme.Font.caption(.medium))
-            .foregroundStyle(Theme.textTertiary)
-
-            Spacer()
-
-            ChromeButton(title: "Stop All", icon: "stop.fill") {
-                engine.stopAll()
-            }
-            .opacity(engine.playingIDs.isEmpty ? 0.45 : 1)
-            .animation(Theme.hover, value: engine.playingIDs.isEmpty)
-        }
-    }
+    // MARK: - Drop overlay
 
     private var dropOverlay: some View {
         RoundedRectangle(cornerRadius: Theme.Radius.container, style: .continuous)
@@ -498,7 +528,36 @@ struct ContentView: View {
 
     private func triggerHotKey(_ character: String) {
         guard let sound = library.sound(forHotKey: character) else { return }
-        attempt { try engine.trigger(sound, in: library) }
+        play(sound)
+    }
+
+    /// Triggers a pad. An error marks the pad and shows in the monitor strip. It never shows an alert.
+    private func play(_ sound: SoundItem) {
+        do {
+            try engine.trigger(sound, in: library)
+        } catch {
+            engine.recordFailure(error, for: sound)
+            // `lastError` can keep the same text, so `onChange` does not always fire.
+            flash(error.localizedDescription)
+        }
+    }
+
+    private func replayLast() {
+        guard let id = engine.lastPlayedID, let sound = library.sound(withID: id) else { return }
+        do {
+            try engine.replayLast(in: library)
+        } catch {
+            engine.recordFailure(error, for: sound)
+            flash(error.localizedDescription)
+        }
+    }
+
+    /// Shows a message in the monitor strip for `TransientNotice.duration` seconds.
+    private func flash(_ message: String) {
+        let token = withAnimation(Theme.hover) { notice.show(message) }
+        DispatchQueue.main.asyncAfter(deadline: .now() + TransientNotice.duration) {
+            withAnimation(Theme.hover) { notice.expire(token) }
+        }
     }
 
     private func releaseHotKey(_ character: String) {
@@ -508,6 +567,7 @@ struct ContentView: View {
 
     /// Ends text editing in the window. The keyboard monitor then gets the hotkeys again.
     private func endEditing() {
+        searchFocused = false
         NSApp.keyWindow?.makeFirstResponder(nil)
     }
 
@@ -530,7 +590,14 @@ struct ContentView: View {
         return true
     }
 
+    /// Runs live work, for example a pad press. An error shows in the monitor strip, not in an alert.
+    /// Use `play(_:)` for a pad. It also marks the pad that failed.
     private func attempt(_ work: () throws -> Void) {
+        do { try work() } catch { flash(error.localizedDescription) }
+    }
+
+    /// Runs work that the user waits for, for example an export. An error shows in an alert.
+    private func attemptWithAlert(_ work: () throws -> Void) {
         do { try work() } catch { present(error) }
     }
 
@@ -653,5 +720,72 @@ private struct MonitorWaveform: View {
 
     var body: some View {
         WaveformView(samples: samples, progress: playhead.progress, tint: tint)
+    }
+}
+
+/// Stops every voice. It stays in one place. It is rose while sound plays and quiet when idle.
+private struct StopAllButton: View {
+    let active: Bool
+    let action: () -> Void
+
+    @State private var hovering = false
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: Theme.Spacing.s) {
+                Image(systemName: "stop.fill")
+                Text("Stop All")
+            }
+            .font(Theme.Font.body(.semibold))
+            .foregroundStyle(active ? Color.white : Theme.textSecondary)
+            .padding(.horizontal, Theme.Spacing.m)
+            .padding(.vertical, Theme.Spacing.s)
+            .background(background)
+        }
+        .buttonStyle(.plain)
+        .onHover { hovering = $0 }
+        .help("Stop all sounds (Space)")
+        .animation(Theme.hover, value: active)
+        .animation(Theme.hover, value: hovering)
+    }
+
+    private var background: some View {
+        let shape = RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous)
+        let idleFill = hovering ? Theme.surfaceHover : Theme.surfaceRaised
+        return shape
+            .fill(active ? Theme.danger : idleFill)
+            .overlay(shape.strokeBorder(active ? Color.clear : Theme.stroke, lineWidth: 1))
+    }
+}
+
+/// The keyboard shortcuts of the main window.
+private struct ShortcutList: View {
+    private let rows: [(key: String, action: String)] = [
+        ("Space", "Stop all sounds"),
+        ("Return", "Play the last pad again"),
+        ("A–Z, 0–9", "Play the pad with that key"),
+        ("⌘F", "Search"),
+        ("Esc", "Leave the search field")
+    ]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.s) {
+            Text("Keyboard Shortcuts")
+                .font(Theme.Font.body(.semibold))
+                .foregroundStyle(Theme.textPrimary)
+            Grid(alignment: .leading, horizontalSpacing: Theme.Spacing.m, verticalSpacing: Theme.Spacing.s) {
+                ForEach(rows, id: \.key) { row in
+                    GridRow {
+                        KeyCap(key: row.key)
+                        Text(row.action)
+                            .font(Theme.Font.body())
+                            .foregroundStyle(Theme.textSecondary)
+                    }
+                }
+            }
+        }
+        .padding(Theme.Spacing.l)
+        // The text colours are for a dark surface. This sets the popover only, not the window.
+        .preferredColorScheme(.dark)
     }
 }
