@@ -132,3 +132,29 @@ final class Recorder: ObservableObject {
         return min(1, peak)
     }
 }
+
+/// Pure helpers for the recorder sheet: the timer text and the trim of a new recording.
+enum RecordingTrim {
+    /// A handle nearer than this to an edge counts as no trim at that edge.
+    static let edgeTolerance: Double = 0.01
+
+    /// Formats seconds as `m:ss.t`, for example `1:05.3`.
+    static func format(_ seconds: TimeInterval) -> String {
+        let tenths = Int((max(0, seconds) * 10).rounded(.down))
+        let whole = tenths / 10
+        return String(format: "%d:%02d.%d", whole / 60, whole % 60, tenths % 10)
+    }
+
+    /// Converts the handle positions to the values of `SoundItem.trimStart` and `SoundItem.trimEnd`.
+    ///
+    /// A handle at an edge gives no trim at that edge: a start of 0 and an end of nil.
+    /// Thus a pad stays untrimmed when the user does not move the handles.
+    static func window(start: Double, end: Double, duration: Double) -> (start: Double, end: Double?) {
+        guard duration > 0 else { return (0, nil) }
+        let lower = min(max(0, start), duration)
+        let upper = min(max(lower, end), duration)
+        let trimStart = lower <= edgeTolerance ? 0 : lower
+        let trimEnd: Double? = upper >= duration - edgeTolerance ? nil : upper
+        return (trimStart, trimEnd)
+    }
+}
