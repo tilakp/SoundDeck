@@ -15,6 +15,7 @@ struct SoundInspector: View {
     @State private var name: String = ""
     @State private var volume: Float = 1
     @State private var loops = false
+    @State private var matchesLoudness = true
     @State private var tint: SoundTint = .none
     @State private var emoji: String = ""
     @State private var hotKey: String = ""
@@ -143,6 +144,14 @@ struct SoundInspector: View {
                 .controlSize(.mini)
                 .tint(tint.color)
 
+                Toggle(isOn: $matchesLoudness) {
+                    Text("Match loudness").font(.system(size: 11.5, design: .rounded))
+                }
+                .toggleStyle(.switch)
+                .controlSize(.mini)
+                .tint(tint.color)
+                .help(loudnessHelp)
+
                 Spacer()
 
                 Picker("", selection: $hotKey) {
@@ -201,6 +210,7 @@ struct SoundInspector: View {
         name = sound.name
         volume = sound.volume
         loops = sound.loops
+        matchesLoudness = sound.matchesLoudness
         tint = sound.tint
         emoji = sound.emoji ?? ""
         hotKey = sound.hotKey ?? ""
@@ -232,6 +242,7 @@ struct SoundInspector: View {
         preview.trimEnd = trimEnd
         preview.volume = volume
         preview.loops = false
+        preview.matchesLoudness = matchesLoudness
         do {
             try engine.play(preview, in: library)
             previewError = nil
@@ -246,6 +257,7 @@ struct SoundInspector: View {
             if !trimmed.isEmpty { item.name = trimmed }
             item.volume = volume
             item.loops = loops
+            item.matchesLoudness = matchesLoudness
             item.tint = tint
             item.emoji = emoji.isEmpty ? nil : emoji
             item.hotKey = hotKey.isEmpty ? nil : hotKey
@@ -256,6 +268,15 @@ struct SoundInspector: View {
             item.trimEnd = (trimEnd >= duration - 0.01) ? nil : trimEnd
         }
         dismiss()
+    }
+
+    /// For example: "-29.1 LUFS. Match loudness adds +11.1 dB."
+    private var loudnessHelp: String {
+        guard sound.isMeasured else { return "The loudness of this sound is not measured yet." }
+        guard let lufs = sound.measuredLoudness else { return "This sound is silent." }
+        let gain = 20 * log10(Double(Loudness.gain(lufs: lufs, peak: sound.measuredPeak)))
+        return String(format: "%.1f LUFS. Match loudness changes the level by %+.1f dB to %.0f LUFS.",
+                      lufs, gain, Loudness.target)
     }
 
     private func format(_ seconds: Double) -> String {

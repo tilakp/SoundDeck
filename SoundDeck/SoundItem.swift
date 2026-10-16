@@ -49,6 +49,21 @@ struct SoundItem: Identifiable, Codable, Equatable {
     /// Single character used as this sound's keyboard trigger.
     var hotKey: String?
 
+    // MARK: Loudness
+    /// Integrated loudness in LUFS. Nil before the measurement and for a silent file.
+    var measuredLoudness: Double?
+    /// The sample peak. Nil until the library measures the file.
+    var measuredPeak: Float?
+    /// When true, the engine moves the pad to the target loudness.
+    var matchesLoudness: Bool
+
+    var isMeasured: Bool { measuredPeak != nil }
+
+    /// The gain that `matchesLoudness` adds. The user volume multiplies it.
+    var loudnessGain: Float {
+        matchesLoudness ? Loudness.gain(lufs: measuredLoudness, peak: measuredPeak) : 1
+    }
+
     // For bundled
     init(name: String) {
         self.init(name: name, isBundled: true)
@@ -82,6 +97,9 @@ struct SoundItem: Identifiable, Codable, Equatable {
         self.tint = .none
         self.emoji = nil
         self.hotKey = nil
+        self.measuredLoudness = nil
+        self.measuredPeak = nil
+        self.matchesLoudness = true
     }
 
     // Every added field is decoded leniently. Libraries written by earlier builds must
@@ -103,6 +121,9 @@ struct SoundItem: Identifiable, Codable, Equatable {
         tint = (try? c.decodeIfPresent(SoundTint.self, forKey: .tint)) ?? .none
         emoji = try c.decodeIfPresent(String.self, forKey: .emoji)
         hotKey = try c.decodeIfPresent(String.self, forKey: .hotKey)
+        measuredLoudness = try c.decodeIfPresent(Double.self, forKey: .measuredLoudness)
+        measuredPeak = try c.decodeIfPresent(Float.self, forKey: .measuredPeak)
+        matchesLoudness = try c.decodeIfPresent(Bool.self, forKey: .matchesLoudness) ?? true
     }
 
     /// Initial for the button badge when no emoji is set.

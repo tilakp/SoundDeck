@@ -128,7 +128,9 @@ This file holds an `AVAudioEngine` graph. Each trigger creates one voice. Theref
 
 The graph is:
 
-`AVAudioPlayerNode` to `AVAudioMixerNode` (voice gain and fade) to `mainMixerNode` (master gain) to `outputNode` (routable).
+`AVAudioPlayerNode` to `AVAudioMixerNode` (voice gain, loudness gain and fade) to `mainMixerNode` (master gain) to the peak limiter to `outputNode` (routable).
+
+The voice mixer volume can be more than 1. A value of 4 gives +12 dB. The limiter is Apple's AUPeakLimiter. It stops clipping when several loud voices play together.
 
 The engine attaches a voice at playback. The engine detaches the voice at retirement. Always use the function `retire()`. This function releases the security scope. It also clears the pad state after the last voice of a sound stops.
 
@@ -139,6 +141,12 @@ The engine stops when the output device changes or the Mac sleeps. The engine th
 After a change of device, the engine connects the main mixer again at the sample rate of the device. Without this, a device with another rate can fail or play no sound.
 
 The function `trimWindow` holds the trim math. It is a pure function, so the tests can call it.
+
+### Loudness.swift
+
+This file measures integrated loudness with ITU-R BS.1770 and the sample peak. A mono file counts as dual mono, because the engine plays it on both channels.
+
+The function `gain` moves a pad to -18 LUFS. The boost is not more than +12 dB, and the peak does not go above -1 dBFS. The library measures pads in the background at start and after each import. A pad without a measurement plays at its user volume.
 
 ### DeckArchive.swift
 

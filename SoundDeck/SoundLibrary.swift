@@ -24,6 +24,8 @@ final class SoundLibrary: ObservableObject {
 
     private let store: SoundLibraryStore
     private let fileManager = FileManager.default
+    /// The pads that a background measurement has now. This prevents a second measurement.
+    private var measuring: Set<UUID> = []
 
     /// The pads of the active deck.
     private(set) var sounds: [SoundItem] {
@@ -48,6 +50,7 @@ final class SoundLibrary: ObservableObject {
             loadBundledSounds()
         }
         assignMissingHotKeys()
+        measureMissingLoudness()
     }
 
     /// Some libraries have no hotkeys. This occurs with a library written before
@@ -113,6 +116,7 @@ final class SoundLibrary: ObservableObject {
         item.hotKey = Self.nextAvailableHotKey(in: sounds)
         sounds.append(item)
         save()
+        measureMissingLoudness()
         return item
     }
 
@@ -139,6 +143,7 @@ final class SoundLibrary: ObservableObject {
         item.hotKey = Self.nextAvailableHotKey(in: sounds)
         sounds.append(item)
         save()
+        measureMissingLoudness()
         return item
     }
 
@@ -228,6 +233,7 @@ final class SoundLibrary: ObservableObject {
         decks.append(deck)
         activeDeckID = deck.id
         save()
+        measureMissingLoudness()
     }
 
     func selectDeck(_ id: UUID) {
@@ -271,6 +277,45 @@ final class SoundLibrary: ObservableObject {
         var number = 2
         while names.contains("\(root) \(number)") { number += 1 }
         return "\(root) \(number)"
+    }
+
+    // MARK: - Loudness
+
+    /// Measures each pad that has no measurement, off the main thread. A pad plays at its
+    /// user volume until its measurement is ready. A pad whose file is missing stays unmeasured.
+    func measureMissingLoudness() {
+        let pending = decks.flatMap(\.sounds).filter { !$0.isMeasured && !measuring.contains($0.id) }
+        let jobs = pending.compactMap { sound in
+            resolve(sound).map { (id: sound.id, url: $0.url, scoped: $0.needsSecurityScope) }
+        }
+        guard !jobs.isEmpty else { return }
+        measuring.formUnion(jobs.map(\.id))
+        Task.detached(priority: .utility) { [weak self] in
+            var results: [UUID: Loudness.Measurement] = [:]
+            for job in jobs {
+                let didAccess = job.scoped && job.url.startAccessingSecurityScopedResource()
+                defer { if didAccess { job.url.stopAccessingSecurityScopedResource() } }
+                do {
+                    results[job.id] = try Loudness.measure(url: job.url)
+                } catch {
+                    print("[DEBUG] Could not measure \(job.url.lastPathComponent): \(error)")
+                }
+            }
+            await self?.applyMeasurements(results, for: jobs.map(\.id))
+        }
+    }
+
+    private func applyMeasurements(_ results: [UUID: Loudness.Measurement], for ids: [UUID]) {
+        measuring.subtract(ids)
+        for (id, measurement) in results {
+            guard let (deck, index) = locate(id) else { continue }
+            decks[deck].sounds[index].measuredLoudness = measurement.lufs
+            decks[deck].sounds[index].measuredPeak = measurement.peak
+        }
+        if !results.isEmpty {
+            print("[DEBUG] Measured the loudness of \(results.count) sounds")
+            save()
+        }
     }
 
     // MARK: - Copies

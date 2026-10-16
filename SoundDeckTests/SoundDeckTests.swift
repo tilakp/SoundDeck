@@ -337,3 +337,80 @@ extension LibraryFileSafetyTests {
         #expect(try Data(contentsOf: file) == Data("not json".utf8))
     }
 }
+
+struct LoudnessTests {
+    /// Writes a 997 Hz sine. The reference level of BS.1770 uses a sine near 1 kHz.
+    private func sine(amplitude: Float, channels: AVAudioChannelCount, seconds: Double = 3,
+                      sampleRate: Double = 48_000) throws -> URL {
+        let url = try temporaryDirectory().appendingPathComponent("sine.caf")
+        let format = try #require(AVAudioFormat(standardFormatWithSampleRate: sampleRate, channels: channels))
+        let file = try AVAudioFile(forWriting: url, settings: format.settings)
+        let frames = AVAudioFrameCount(seconds * sampleRate)
+        let buffer = try #require(AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frames))
+        buffer.frameLength = frames
+        for channel in 0..<Int(channels) {
+            for frame in 0..<Int(frames) {
+                buffer.floatChannelData![channel][frame] = amplitude * sin(2 * .pi * 997 * Float(frame) / Float(sampleRate))
+            }
+        }
+        try file.write(from: buffer)
+        return url
+    }
+
+    @Test func sineMeasuresAtItsReferenceLevel() throws {
+        // A stereo sine at amplitude 0.1 is -20 LUFS. A mono file counts as dual mono.
+        let stereo = try Loudness.measure(url: try sine(amplitude: 0.1, channels: 2, sampleRate: 44_100))
+        let mono = try Loudness.measure(url: try sine(amplitude: 0.1, channels: 1))
+        #expect(abs(try #require(stereo.lufs) - -20) < 0.05)
+        #expect(abs(try #require(mono.lufs) - -20) < 0.05)
+        #expect(abs(mono.peak - 0.1) < 0.001)
+    }
+
+    @Test func shortClipIsMeasured() throws {
+        let clip = try Loudness.measure(url: try sine(amplitude: 0.5, channels: 1, seconds: 0.2))
+        #expect(abs(try #require(clip.lufs) - -6.02) < 0.3)
+    }
+
+    @Test func silenceHasNoLoudness() throws {
+        let silent = try Loudness.measure(url: try sine(amplitude: 0, channels: 1))
+        #expect(silent.lufs == nil)
+        #expect(Loudness.gain(lufs: silent.lufs, peak: silent.peak) == 1)
+    }
+
+    @Test func gainMovesToTheTargetInsideTheLimits() {
+        func decibels(_ gain: Float) -> Double { 20 * log10(Double(gain)) }
+        // A quiet pad with room under the peak ceiling reaches the target.
+        #expect(abs(decibels(Loudness.gain(lufs: -29.1, peak: 0.2)) - 11.1) < 0.01)
+        // The boost stops at the maximum.
+        #expect(abs(decibels(Loudness.gain(lufs: -40, peak: 0.01)) - Loudness.maxBoost) < 0.01)
+        // The boost stops at the peak ceiling: a peak of -6 dBFS allows only +5 dB.
+        #expect(abs(decibels(Loudness.gain(lufs: -30, peak: 0.5012)) - 5) < 0.01)
+        // A loud pad gets quieter.
+        #expect(abs(decibels(Loudness.gain(lufs: -14, peak: 0.5)) - -4) < 0.01)
+        // No measurement, no change.
+        #expect(Loudness.gain(lufs: nil, peak: nil) == 1)
+    }
+
+    @Test func padWithoutMatchingKeepsItsLevel() {
+        var item = SoundItem(name: "Applause.wav")
+        item.measuredLoudness = -29.1
+        item.measuredPeak = 0.2
+        #expect(item.loudnessGain > 3)
+        item.matchesLoudness = false
+        #expect(item.loudnessGain == 1)
+    }
+}
+
+@MainActor
+struct LibraryLoudnessTests {
+    @Test func bundledPadsGetMeasured() async throws {
+        let library = SoundLibrary(store: SoundLibraryStore(directoryURL: try temporaryDirectory()))
+        // The measurement runs in the background. Wait for it, with a time limit.
+        for _ in 0..<100 where !library.sounds.allSatisfy({ $0.isMeasured }) {
+            try await Task.sleep(for: .milliseconds(100))
+        }
+        #expect(library.sounds.allSatisfy { $0.isMeasured })
+        let applause = try #require(library.sounds.first { $0.fileName == "Applause.wav" })
+        #expect(abs(try #require(applause.measuredLoudness) - -29.1) < 0.2)
+    }
+}

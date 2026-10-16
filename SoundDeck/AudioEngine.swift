@@ -13,9 +13,9 @@ import Foundation
 ///
 /// Graph shape, one branch per active voice:
 ///
-///     AVAudioPlayerNode ──▶ AVAudioMixerNode ──▶ mainMixerNode ──▶ outputNode
-///                            (per-voice gain,      (master gain)     (routable)
-///                             fade envelope)
+///     AVAudioPlayerNode ──▶ AVAudioMixerNode ──▶ mainMixerNode ──▶ limiter ──▶ outputNode
+///                            (per-voice gain,      (master gain)     (peak)      (routable)
+///                             loudness, fade)
 @MainActor
 final class AudioEngine: ObservableObject {
 
@@ -28,17 +28,20 @@ final class AudioEngine: ObservableObject {
         let scopedURL: URL?
         let duration: Double
         let startOffset: Double
+        /// The gain that moves the pad to the target loudness. The user volume multiplies it.
+        let loudnessGain: Float
         var startedAt: TimeInterval
         var fadeTimer: Timer?
 
         init(soundID: UUID, player: AVAudioPlayerNode, mixer: AVAudioMixerNode,
-             scopedURL: URL?, duration: Double, startOffset: Double) {
+             scopedURL: URL?, duration: Double, startOffset: Double, loudnessGain: Float) {
             self.soundID = soundID
             self.player = player
             self.mixer = mixer
             self.scopedURL = scopedURL
             self.duration = duration
             self.startOffset = startOffset
+            self.loudnessGain = loudnessGain
             self.startedAt = CACurrentMediaTime()
         }
     }
@@ -98,6 +101,14 @@ final class AudioEngine: ObservableObject {
     private static let outputDeviceKey = "SoundDeckOutputDeviceUID"
 
     private let engine = AVAudioEngine()
+    /// Apple's peak limiter. Several loud voices together do not clip.
+    private let limiter = AVAudioUnitEffect(audioComponentDescription: AudioComponentDescription(
+        componentType: kAudioUnitType_Effect,
+        componentSubType: kAudioUnitSubType_PeakLimiter,
+        componentManufacturer: kAudioUnitManufacturer_Apple,
+        componentFlags: 0,
+        componentFlagsMask: 0
+    ))
     private var voices: [UUID: Voice] = [:]
     private var progressTimer: Timer?
     private var waveformToken = UUID()
@@ -109,6 +120,8 @@ final class AudioEngine: ObservableObject {
             masterVolume = stored
         }
         engine.mainMixerNode.outputVolume = masterVolume
+        engine.attach(limiter)
+        connectOutputChain()
         selectedDeviceUID = UserDefaults.standard.string(forKey: Self.outputDeviceKey)
         refreshDevices()
         applyOutputDevice()
@@ -166,7 +179,8 @@ final class AudioEngine: ObservableObject {
 
         let player = AVAudioPlayerNode()
         let mixer = AVAudioMixerNode()
-        mixer.outputVolume = sound.volume
+        // A mixer volume above 1 boosts the signal. The limiter catches the peaks of several voices.
+        mixer.outputVolume = sound.volume * sound.loudnessGain
         engine.attach(player)
         engine.attach(mixer)
         engine.connect(player, to: mixer, format: file.processingFormat)
@@ -202,7 +216,8 @@ final class AudioEngine: ObservableObject {
             mixer: mixer,
             scopedURL: didAccess ? url : nil,
             duration: end - start,
-            startOffset: start
+            startOffset: start,
+            loudnessGain: sound.loudnessGain
         )
 
         schedule(file: file, on: voice, startFrame: startFrame, frameCount: frameCount, loops: sound.loops)
@@ -304,7 +319,7 @@ final class AudioEngine: ObservableObject {
     /// Live gain change while a sound is playing.
     func setVolume(_ volume: Float, for soundID: UUID) {
         for voice in voices.values where voice.soundID == soundID {
-            voice.mixer.outputVolume = volume
+            voice.mixer.outputVolume = volume * voice.loudnessGain
         }
     }
 
@@ -450,15 +465,20 @@ final class AudioEngine: ObservableObject {
             print("[DEBUG] Could not set output device (OSStatus \(status))")
             return
         }
-        // The new device can have another sample rate or channel count. Connect the main
-        // mixer again at the rate of the device. The output unit maps stereo to the first two channels.
-        let hardware = engine.outputNode.outputFormat(forBus: 0)
-        if hardware.sampleRate > 0,
-           let format = AVAudioFormat(standardFormatWithSampleRate: hardware.sampleRate,
-                                      channels: min(2, max(1, hardware.channelCount))) {
-            engine.connect(engine.mainMixerNode, to: engine.outputNode, format: format)
-        }
+        connectOutputChain()
         print("[DEBUG] Output device is \(target)")
+    }
+
+    /// Connects the main mixer to the limiter, and the limiter to the output, at the rate of
+    /// the device. A new device can have another sample rate or channel count. The output
+    /// unit maps stereo to the first two channels of the device.
+    private func connectOutputChain() {
+        let hardware = engine.outputNode.outputFormat(forBus: 0)
+        guard hardware.sampleRate > 0,
+              let format = AVAudioFormat(standardFormatWithSampleRate: hardware.sampleRate,
+                                         channels: min(2, max(1, hardware.channelCount))) else { return }
+        engine.connect(engine.mainMixerNode, to: limiter, format: format)
+        engine.connect(limiter, to: engine.outputNode, format: format)
     }
 
     private static func currentDevice(of audioUnit: AudioUnit) -> AudioDeviceID? {

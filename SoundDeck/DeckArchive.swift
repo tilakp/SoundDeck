@@ -24,6 +24,8 @@ struct DeckArchive: Codable {
         var tint: SoundTint
         var emoji: String?
         var hotKey: String?
+        /// Nil in files from version 2.1 of the application.
+        var matchesLoudness: Bool?
         var audio: Data
     }
 
@@ -67,6 +69,7 @@ extension SoundLibrary {
                 tint: sound.tint,
                 emoji: sound.emoji,
                 hotKey: sound.hotKey,
+                matchesLoudness: sound.matchesLoudness,
                 audio: audio
             )
         }
@@ -101,6 +104,7 @@ extension SoundLibrary {
             item.tint = entry.tint
             item.emoji = entry.emoji
             item.hotKey = entry.hotKey
+            item.matchesLoudness = entry.matchesLoudness ?? true
             files[item.id] = entry.audio
             return item
         }
