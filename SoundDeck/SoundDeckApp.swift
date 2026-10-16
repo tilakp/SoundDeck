@@ -31,7 +31,11 @@ struct SoundDeckApp: App {
         _engine = StateObject(wrappedValue: engine)
         _hotKeys = StateObject(wrappedValue: HotKeyBinder.live(library: library, engine: engine))
         DeckCommands.shared = DeckCommands(library: library, engine: engine)
-        if !Self.isRunningTests { OSCServer.shared.startIfEnabled() }
+        // Start the remote controls that the user turned on. The test host starts none.
+        if !Self.isRunningTests {
+            OSCServer.shared.startIfEnabled()
+            TwitchChat.shared.restart()
+        }
     }
 
     /// True when the app is the host of the unit tests.
