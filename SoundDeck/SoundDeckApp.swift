@@ -31,10 +31,14 @@ struct SoundDeckApp: App {
         _engine = StateObject(wrappedValue: engine)
         _hotKeys = StateObject(wrappedValue: HotKeyBinder.live(library: library, engine: engine))
         DeckCommands.shared = DeckCommands(library: library, engine: engine)
+        let floatingDeck = FloatingDeck(library: library, engine: engine)
+        FloatingDeck.shared = floatingDeck
         // Start the remote controls that the user turned on. The test host starts none.
         if !Self.isRunningTests {
             OSCServer.shared.startIfEnabled()
             TwitchChat.shared.restart()
+            // Wait for the end of the launch. Then open the floating deck if it was open at the last quit.
+            DispatchQueue.main.async { floatingDeck.restore() }
         }
     }
 
@@ -54,6 +58,10 @@ struct SoundDeckApp: App {
         .defaultSize(width: 900, height: 640)
         .commands {
             CommandGroup(replacing: .newItem) {}
+            CommandGroup(after: .windowArrangement) {
+                Button("Floating Deck") { FloatingDeck.shared?.toggle() }
+                    .keyboardShortcut("f", modifiers: [.command, .option])
+            }
         }
 
         Settings {
