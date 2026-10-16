@@ -96,6 +96,9 @@ final class AudioEngine: ObservableObject {
     let playhead = Playhead()
     /// The last error from `triggerReportingErrors`. A successful play clears it.
     @Published private(set) var lastError: String?
+    /// The last error of each pad that failed. A successful play of that pad clears it.
+    /// The views mark a failed pad in place, so a live show gets no modal alert.
+    @Published private(set) var padErrors: [UUID: String] = [:]
     @Published private(set) var focusedSoundID: UUID?
     @Published private(set) var waveform: [Float]?
 
@@ -271,6 +274,7 @@ final class AudioEngine: ObservableObject {
         lastPlayedID = sound.id
         focusedSoundID = sound.id
         lastError = nil
+        padErrors[sound.id] = nil
         startProgressTimer()
         loadWaveform(for: url, soundID: sound.id)
     }
@@ -304,9 +308,15 @@ final class AudioEngine: ObservableObject {
         do {
             try trigger(sound, in: library)
         } catch {
-            print("[DEBUG] Could not play \(sound.name): \(error)")
-            lastError = error.localizedDescription
+            recordFailure(error, for: sound)
         }
+    }
+
+    /// Keeps the error of a pad for the views. Every trigger path calls this on failure.
+    func recordFailure(_ error: Error, for sound: SoundItem) {
+        print("[DEBUG] Could not play \(sound.name): \(error)")
+        lastError = error.localizedDescription
+        padErrors[sound.id] = error.localizedDescription
     }
 
     struct TrimWindow: Equatable {
