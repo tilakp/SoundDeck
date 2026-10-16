@@ -35,6 +35,7 @@ struct SoundDeckApp: App {
         if !Self.isRunningTests {
             OSCServer.shared.startIfEnabled()
             TwitchChat.shared.restart()
+            WebRemoteServer.shared.startIfEnabled()
         }
     }
 
