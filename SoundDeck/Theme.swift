@@ -35,7 +35,8 @@ enum Theme {
 
     static let textPrimary = Color.white.opacity(0.95)
     static let textSecondary = Color.white.opacity(0.58)
-    static let textTertiary = Color.white.opacity(0.36)
+    /// White at 0.50 gives 4.7:1 to 5.3:1 on all surfaces. This passes WCAG AA for small text.
+    static let textTertiary = Color.white.opacity(0.50)
 
     // MARK: Accent
 
@@ -55,12 +56,71 @@ enum Theme {
     static let press = SwiftUI.Animation.spring(response: 0.28, dampingFraction: 0.62)
     static let hover = SwiftUI.Animation.easeOut(duration: 0.16)
 
+    // MARK: Type
+
+    /// The type scale. Use only these four sizes.
+    ///
+    /// Pad names and key caps use the rounded design. All other text uses the default design.
+    enum Font {
+        static let captionSize: CGFloat = 11
+        static let bodySize: CGFloat = 13
+        static let titleSize: CGFloat = 15
+        static let numeralSize: CGFloat = 20
+
+        /// Hints, badges, values and secondary labels.
+        static func caption(_ weight: SwiftUI.Font.Weight = .regular) -> SwiftUI.Font {
+            .system(size: captionSize, weight: weight)
+        }
+
+        /// Controls, fields and primary labels.
+        static func body(_ weight: SwiftUI.Font.Weight = .regular) -> SwiftUI.Font {
+            .system(size: bodySize, weight: weight)
+        }
+
+        /// Sheet titles, the window title and empty states.
+        static func title(_ weight: SwiftUI.Font.Weight = .semibold) -> SwiftUI.Font {
+            .system(size: titleSize, weight: weight)
+        }
+
+        /// Large monospaced numbers, for example the recording time.
+        static func numeral(_ weight: SwiftUI.Font.Weight = .medium) -> SwiftUI.Font {
+            .system(size: numeralSize, weight: weight, design: .monospaced)
+        }
+
+        /// The name of a pad.
+        static let padName = SwiftUI.Font.system(size: bodySize, weight: .semibold, design: .rounded)
+
+        /// The text in a `KeyCap`.
+        static let keyCap = SwiftUI.Font.system(size: captionSize, weight: .semibold, design: .rounded)
+    }
+
+    // MARK: Corner radius
+
+    enum Radius {
+        /// Key caps and badges.
+        static let small: CGFloat = 6
+        /// Buttons, chips and fields.
+        static let control: CGFloat = 8
+        /// Tiles, panels and sheets.
+        static let container: CGFloat = 12
+    }
+
+    // MARK: Spacing
+
+    enum Spacing {
+        static let xs: CGFloat = 4
+        static let s: CGFloat = 8
+        static let m: CGFloat = 12
+        static let l: CGFloat = 16
+        static let xl: CGFloat = 24
+    }
+
     // MARK: Geometry
 
-    static let tileRadius: CGFloat = 13
+    static let tileRadius: CGFloat = Radius.container
     static let tileMinWidth: CGFloat = 132
     static let tileHeight: CGFloat = 76
-    static let tileSpacing: CGFloat = 9
+    static let tileSpacing: CGFloat = Spacing.s
 }
 
 extension SoundTint {
@@ -82,7 +142,7 @@ extension SoundTint {
 /// A translucent panel. Uses a real material so it picks up the desktop behind the
 /// window rather than looking like a flat grey rectangle.
 struct GlassPanel<Content: View>: View {
-    var cornerRadius: CGFloat = 14
+    var cornerRadius: CGFloat = Theme.Radius.container
     @ViewBuilder var content: () -> Content
 
     var body: some View {
@@ -104,17 +164,17 @@ struct KeyCap: View {
 
     var body: some View {
         Text(key.uppercased())
-            .font(.system(size: 10, weight: .semibold, design: .rounded))
+            .font(Theme.Font.keyCap)
             .foregroundStyle(Theme.textSecondary)
             .frame(minWidth: 16)
-            .padding(.horizontal, 4)
+            .padding(.horizontal, Theme.Spacing.xs)
             .padding(.vertical, 2)
             .background(
-                RoundedRectangle(cornerRadius: 5, style: .continuous)
+                RoundedRectangle(cornerRadius: Theme.Radius.small, style: .continuous)
                     .fill(Color.white.opacity(0.09))
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 5, style: .continuous)
+                RoundedRectangle(cornerRadius: Theme.Radius.small, style: .continuous)
                     .strokeBorder(Color.white.opacity(0.13), lineWidth: 1)
             )
     }
@@ -131,25 +191,25 @@ struct ChromeButton: View {
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 6) {
+            HStack(spacing: Theme.Spacing.s) {
                 Image(systemName: icon)
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(Theme.Font.body(.semibold))
                 Text(title)
-                    .font(.system(size: 12.5, weight: .semibold, design: .rounded))
+                    .font(Theme.Font.body(.semibold))
             }
-            .padding(.horizontal, 13)
-            .padding(.vertical, 8)
+            .padding(.horizontal, Theme.Spacing.m)
+            .padding(.vertical, Theme.Spacing.s)
             .foregroundStyle(prominent ? Color.white : Theme.textPrimary)
             .background {
                 if prominent {
-                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous)
                         .fill(Theme.accentGradient)
                         .shadow(color: Theme.accent.opacity(hovering ? 0.5 : 0.3), radius: hovering ? 12 : 7, y: 3)
                 } else {
-                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous)
                         .fill(hovering ? Theme.surfaceHover : Theme.surface)
                         .overlay(
-                            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous)
                                 .strokeBorder(Theme.stroke, lineWidth: 1)
                         )
                 }

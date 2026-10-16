@@ -10,21 +10,21 @@ struct RecorderSheet: View {
     @State private var errorMessage: String?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            VStack(alignment: .leading, spacing: 3) {
+        VStack(alignment: .leading, spacing: Theme.Spacing.l) {
+            VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
                 Text("Record a Sound")
-                    .font(.system(size: 15, weight: .semibold, design: .rounded))
+                    .font(Theme.Font.title())
                     .foregroundStyle(Theme.textPrimary)
                 Text("Records from the default input device into “\(library.activeDeck.name)”.")
-                    .font(.system(size: 11, design: .rounded))
+                    .font(Theme.Font.caption())
                     .foregroundStyle(Theme.textTertiary)
             }
 
-            HStack(spacing: 14) {
+            HStack(spacing: Theme.Spacing.l) {
                 recordButton
-                VStack(alignment: .leading, spacing: 6) {
+                VStack(alignment: .leading, spacing: Theme.Spacing.s) {
                     Text(format(recorder.elapsed))
-                        .font(.system(size: 20, weight: .medium, design: .monospaced))
+                        .font(Theme.Font.numeral())
                         .foregroundStyle(recorder.isRecording ? Theme.textPrimary : Theme.textSecondary)
                     LevelMeter(level: recorder.level)
                         .frame(height: 6)
@@ -38,7 +38,7 @@ struct RecorderSheet: View {
 
             if let errorMessage {
                 Text(errorMessage)
-                    .font(.system(size: 10.5, design: .rounded))
+                    .font(Theme.Font.caption())
                     .foregroundStyle(SoundTint.rose.color)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -54,7 +54,7 @@ struct RecorderSheet: View {
                     .disabled(recorder.recordingURL == nil || recorder.isRecording)
             }
         }
-        .padding(20)
+        .padding(Theme.Spacing.xl)
         .frame(width: 380)
         .background(Theme.backdrop)
         .onDisappear { if recorder.isRecording { recorder.discard() } }
@@ -68,7 +68,7 @@ struct RecorderSheet: View {
                     .frame(width: 52, height: 52)
                     .overlay(Circle().strokeBorder(Theme.stroke, lineWidth: 1))
                 if recorder.isRecording {
-                    RoundedRectangle(cornerRadius: 4, style: .continuous)
+                    RoundedRectangle(cornerRadius: Theme.Radius.small, style: .continuous)
                         .fill(SoundTint.rose.color)
                         .frame(width: 18, height: 18)
                 } else {
