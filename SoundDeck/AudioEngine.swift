@@ -467,6 +467,7 @@ final class AudioEngine: ObservableObject {
             stopEnvelopeTimer()
             stopProgressTimer()
             playhead.progress = 0
+            playhead.padProgress = [:]
             waveform = nil
             focusedSoundID = nil
             // Idling the engine releases the output device so other apps can change it.
@@ -497,15 +498,28 @@ final class AudioEngine: ObservableObject {
     }
 
     private func tick() {
-        guard let focusedSoundID,
-              let voice = voices.values.filter({ $0.soundID == focusedSoundID })
-                  .max(by: { $0.startedAt < $1.startedAt }),
-              voice.duration > 0 else {
-            playhead.progress = 0
-            return
+        let progress = Self.padProgress(
+            of: voices.values.map { (soundID: $0.soundID, startedAt: $0.startedAt, duration: $0.duration) },
+            at: CACurrentMediaTime()
+        )
+        playhead.padProgress = progress
+        playhead.progress = focusedSoundID.flatMap { progress[$0] } ?? 0
+    }
+
+    /// Gives the progress of each pad, from 0 to 1. The newest voice of a pad sets its value.
+    /// A voice with no duration gives 0.
+    nonisolated static func padProgress(
+        of voices: [(soundID: UUID, startedAt: TimeInterval, duration: Double)],
+        at now: TimeInterval
+    ) -> [UUID: Double] {
+        var newest: [UUID: (startedAt: TimeInterval, duration: Double)] = [:]
+        for voice in voices where (newest[voice.soundID]?.startedAt ?? -.infinity) < voice.startedAt {
+            newest[voice.soundID] = (voice.startedAt, voice.duration)
         }
-        let elapsed = CACurrentMediaTime() - voice.startedAt
-        playhead.progress = min(1, max(0, elapsed / voice.duration))
+        return newest.mapValues { voice in
+            guard voice.duration > 0 else { return 0 }
+            return min(1, max(0, (now - voice.startedAt) / voice.duration))
+        }
     }
 
     // MARK: - Waveform
@@ -604,4 +618,7 @@ final class AudioEngine: ObservableObject {
 @MainActor
 final class Playhead: ObservableObject {
     @Published var progress: Double = 0
+    /// The progress of each playing pad. The key is `SoundItem.id`.
+    /// Only a small subview in each tile observes this value. Thus the grid does not draw again at each tick.
+    @Published var padProgress: [UUID: Double] = [:]
 }

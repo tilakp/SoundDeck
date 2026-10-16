@@ -39,7 +39,7 @@ struct ContentView: View {
         .frame(minWidth: 720, minHeight: 560)
         .background(KeyboardHandler(
             onStop: { engine.stopAll() },
-            onReplay: { attempt { try engine.replayLast(in: library) } },
+            onReplay: replayOrFireFocusedPad,
             onCharacter: triggerHotKey,
             onRelease: releaseHotKey
         ))
@@ -382,6 +382,35 @@ struct ContentView: View {
 
     // MARK: - Deck
 
+    /// The pad with the keyboard focus. Tab and the arrow keys move it.
+    @FocusState private var focusedPadID: UUID?
+
+    /// Return fires the pad with the keyboard focus. With no focused pad, Return plays the last pad again.
+    private func replayOrFireFocusedPad() {
+        if let id = focusedPadID, let sound = library.filteredSounds.first(where: { $0.id == id }) {
+            attempt { try engine.trigger(sound, in: library) }
+        } else {
+            attempt { try engine.replayLast(in: library) }
+        }
+    }
+
+    private func moveFocus(_ direction: MoveCommandDirection, in sounds: [SoundItem], columns: Int) {
+        let step: PadGridNavigation.Direction
+        switch direction {
+        case .left: step = .left
+        case .right: step = .right
+        case .up: step = .up
+        case .down: step = .down
+        @unknown default: return
+        }
+        guard let id = focusedPadID,
+              let index = sounds.firstIndex(where: { $0.id == id }),
+              let target = PadGridNavigation.neighbour(
+                  of: index, count: sounds.count, columns: columns, direction: step
+              ) else { return }
+        focusedPadID = sounds[target].id
+    }
+
     private var deck: some View {
         GeometryReader { geometry in
             let columns = gridColumns(for: geometry.size.width)
@@ -398,6 +427,9 @@ struct ContentView: View {
                                 sound: sound,
                                 isPlaying: engine.playingIDs.contains(sound.id),
                                 isLastPlayed: engine.lastPlayedID == sound.id,
+                                isFocused: focusedPadID == sound.id,
+                                errorMessage: engine.padErrors[sound.id],
+                                playhead: engine.playhead,
                                 play: {
                                     endEditing()
                                     attempt { try engine.trigger(sound, in: library) }
@@ -415,13 +447,17 @@ struct ContentView: View {
                                     .map { (id: $0.id, name: $0.name) },
                                 moveToDeck: { library.moveSound(sound, toDeck: $0) }
                             )
+                            .focused($focusedPadID, equals: sound.id)
                             .onDrag {
                                 NSItemProvider(object: sound.id.uuidString as NSString)
                             }
                             .onDrop(of: [.text], delegate: ReorderDropDelegate(target: sound, library: library))
                         }
                     }
-                    .padding(.vertical, 2)
+                    .onMoveCommand { moveFocus($0, in: sounds, columns: columns.count) }
+                    // Room for the focus ring, which is outside the tile.
+                    .padding(.vertical, 4)
+                    .padding(.horizontal, 3)
                 }
             }
         }

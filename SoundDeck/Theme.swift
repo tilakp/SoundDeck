@@ -119,7 +119,7 @@ enum Theme {
 
     static let tileRadius: CGFloat = Radius.container
     static let tileMinWidth: CGFloat = 132
-    static let tileHeight: CGFloat = 76
+    static let tileHeight: CGFloat = 88
     static let tileSpacing: CGFloat = Spacing.s
 }
 
