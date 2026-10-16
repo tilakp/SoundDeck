@@ -51,6 +51,11 @@ enum Theme {
         )
     }
 
+    // MARK: Status
+
+    /// The Stop All control while sound plays, and playback errors. It is the same rose as `SoundTint.rose`.
+    static let danger = Color(red: 1.00, green: 0.44, blue: 0.55)
+
     // MARK: Motion
 
     static let press = SwiftUI.Animation.spring(response: 0.28, dampingFraction: 0.62)
