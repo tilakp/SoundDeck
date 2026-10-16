@@ -23,6 +23,7 @@ struct SoundInspector: View {
     @State private var duration: Double = 0
     @State private var trimStart: Double = 0
     @State private var trimEnd: Double = 0
+    @State private var previewError: String?
 
     private let emojiChoices = ["", "🔔", "💥", "🎺", "🥁", "⚡️", "🎉", "😂", "👏", "🚨", "💧", "🐸", "🎸", "📣", "🛎️"]
 
@@ -104,6 +105,12 @@ struct SoundInspector: View {
                     .foregroundStyle(Theme.accentBright)
                 }
                 .buttonStyle(.plain)
+            }
+
+            if let previewError {
+                Text(previewError)
+                    .font(.system(size: 10.5, design: .rounded))
+                    .foregroundStyle(SoundTint.rose.color)
             }
         }
     }
@@ -225,7 +232,12 @@ struct SoundInspector: View {
         preview.trimEnd = trimEnd
         preview.volume = volume
         preview.loops = false
-        try? engine.play(preview, in: library)
+        do {
+            try engine.play(preview, in: library)
+            previewError = nil
+        } catch {
+            previewError = error.localizedDescription
+        }
     }
 
     private func commit() {
@@ -237,6 +249,8 @@ struct SoundInspector: View {
             item.tint = tint
             item.emoji = emoji.isEmpty ? nil : emoji
             item.hotKey = hotKey.isEmpty ? nil : hotKey
+            // Before the duration loads, the trim values are not real. Keep the saved trim.
+            guard duration > 0 else { return }
             item.trimStart = trimStart
             // Store nil for "to the end" so a re-encode of the same file still works.
             item.trimEnd = (trimEnd >= duration - 0.01) ? nil : trimEnd
@@ -258,6 +272,8 @@ private struct TrimTrack: View {
     @Binding var start: Double
     @Binding var end: Double
     let tint: Color
+
+    private static let track = "TrimTrack"
 
     var body: some View {
         GeometryReader { geometry in
@@ -299,6 +315,8 @@ private struct TrimTrack: View {
                     end = max(min(duration, time(newX, in: width)), min(duration, start + 0.05))
                 }
             }
+            // The handles read their drag position in this space, not in their own frame.
+            .coordinateSpace(name: Self.track)
             .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
             .overlay(
                 RoundedRectangle(cornerRadius: 8, style: .continuous)
@@ -320,7 +338,7 @@ private struct TrimTrack: View {
             .shadow(color: tint.opacity(0.7), radius: 4)
             .offset(x: x - 2)
             .gesture(
-                DragGesture(minimumDistance: 0)
+                DragGesture(minimumDistance: 0, coordinateSpace: .named(Self.track))
                     .onChanged { value in move(value.location.x) }
             )
     }

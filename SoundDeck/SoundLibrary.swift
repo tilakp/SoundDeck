@@ -64,7 +64,7 @@ final class SoundLibrary: ObservableObject {
     @discardableResult
     func addSound(url: URL) throws -> SoundItem {
         let fileName = url.lastPathComponent
-        if sounds.contains(where: { !$0.isBundled && $0.name == fileName }) {
+        if sounds.contains(where: { !$0.isBundled && $0.fileName == fileName }) {
             throw SoundImportError.duplicate(name: fileName)
         }
         // The picker hands back a URL whose scope must be open to bookmark it.
@@ -117,6 +117,12 @@ final class SoundLibrary: ObservableObject {
     func update(_ sound: SoundItem, _ mutate: (inout SoundItem) -> Void) {
         guard let index = sounds.firstIndex(where: { $0.id == sound.id }) else { return }
         mutate(&sounds[index])
+        // A hotkey can trigger only one pad. Remove the key from the other pads.
+        if let key = sounds[index].hotKey?.lowercased() {
+            for other in sounds.indices where other != index && sounds[other].hotKey?.lowercased() == key {
+                sounds[other].hotKey = nil
+            }
+        }
         save()
     }
 
@@ -133,7 +139,7 @@ final class SoundLibrary: ObservableObject {
     /// Uses 1 to 9, then 0, then letters. This matches the layout order of the deck.
     private func nextAvailableHotKey() -> String? {
         let candidates = (1...9).map(String.init) + ["0"] + "abcdefghijklmnopqrstuvwxyz".map(String.init)
-        let taken = Set(sounds.compactMap { $0.hotKey })
+        let taken = Set(sounds.compactMap { $0.hotKey?.lowercased() })
         return candidates.first { !taken.contains($0) }
     }
 
@@ -202,10 +208,10 @@ final class SoundLibrary: ObservableObject {
     private func replaceMissingBundledSounds() {
         let names = bundledFileNames()
         guard !names.isEmpty else { return }
-        let isMissing = { (item: SoundItem) in item.isBundled && !names.contains(item.name) }
+        let isMissing = { (item: SoundItem) in item.isBundled && !names.contains(item.fileName) }
         guard sounds.contains(where: isMissing) else { return }
         sounds.removeAll(where: isMissing)
-        let present = Set(sounds.filter(\.isBundled).map(\.name))
+        let present = Set(sounds.filter(\.isBundled).map(\.fileName))
         sounds.insert(contentsOf: names.filter { !present.contains($0) }.map { SoundItem(name: $0) }, at: 0)
         print("[DEBUG] Replaced missing bundled sounds")
         save()

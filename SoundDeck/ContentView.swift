@@ -117,6 +117,9 @@ struct ContentView: View {
                 .textFieldStyle(.plain)
                 .font(.system(size: 12.5, design: .rounded))
                 .foregroundStyle(Theme.textPrimary)
+                // Give the keys back to the deck. If not, the digits go into the field.
+                .onSubmit(endEditing)
+                .onExitCommand(perform: endEditing)
             if !library.searchText.isEmpty {
                 Button {
                     library.searchText = ""
@@ -219,7 +222,7 @@ struct ContentView: View {
 
                 Group {
                     if let samples = engine.waveform {
-                        WaveformView(samples: samples, progress: engine.progress, tint: focusedTint)
+                        MonitorWaveform(samples: samples, playhead: engine.playhead, tint: focusedTint)
                     } else {
                         WaveformPlaceholder()
                     }
@@ -266,19 +269,23 @@ struct ContentView: View {
     private var deck: some View {
         GeometryReader { geometry in
             let columns = gridColumns(for: geometry.size.width)
+            let sounds = library.filteredSounds
             ScrollView {
-                if library.filteredSounds.isEmpty {
+                if sounds.isEmpty {
                     emptyState
                         .frame(maxWidth: .infinity)
                         .padding(.top, 60)
                 } else {
                     LazyVGrid(columns: columns, spacing: Theme.tileSpacing) {
-                        ForEach(library.filteredSounds) { sound in
+                        ForEach(sounds) { sound in
                             SoundTile(
                                 sound: sound,
                                 isPlaying: engine.playingIDs.contains(sound.id),
                                 isLastPlayed: engine.lastPlayedID == sound.id,
-                                play: { attempt { try engine.play(sound, in: library) } },
+                                play: {
+                                    endEditing()
+                                    attempt { try engine.play(sound, in: library) }
+                                },
                                 stop: { engine.stop(sound) },
                                 remove: {
                                     engine.stop(sound, fade: false)
@@ -373,6 +380,11 @@ struct ContentView: View {
         attempt { try engine.play(sound, in: library) }
     }
 
+    /// Ends text editing in the window. The keyboard monitor then gets the hotkeys again.
+    private func endEditing() {
+        NSApp.keyWindow?.makeFirstResponder(nil)
+    }
+
     private func handleDrop(_ providers: [NSItemProvider]) -> Bool {
         var collected: [URL] = []
         let group = DispatchGroup()
@@ -435,9 +447,9 @@ struct ReorderDropDelegate: DropDelegate {
 
 /// Captures key presses for the whole window.
 ///
-/// SwiftUI has no global key handler on macOS, so an AppKit view sits behind the
-/// content and forwards what the deck cares about. Anything it does not handle is
-/// passed up the responder chain so text fields keep working.
+/// SwiftUI has no global key handler on macOS. An AppKit view installs a local event
+/// monitor for its window. The monitor does not depend on the first responder, so a
+/// click on a SwiftUI control does not stop the hotkeys. A text field keeps its keys.
 struct KeyboardHandler: NSViewRepresentable {
     let onStop: () -> Void
     let onReplay: () -> Void
@@ -448,7 +460,6 @@ struct KeyboardHandler: NSViewRepresentable {
         view.onStop = onStop
         view.onReplay = onReplay
         view.onCharacter = onCharacter
-        DispatchQueue.main.async { view.window?.makeFirstResponder(view) }
         return view
     }
 
@@ -463,15 +474,23 @@ struct KeyboardHandler: NSViewRepresentable {
         var onStop: (() -> Void)?
         var onReplay: (() -> Void)?
         var onCharacter: ((String) -> Void)?
+        private var monitor: Any?
 
-        override var acceptsFirstResponder: Bool { true }
-
-        override func keyDown(with event: NSEvent) {
-            // Never swallow keys while the user is typing in a field.
-            if let responder = window?.firstResponder, responder is NSTextView {
-                super.keyDown(with: event)
-                return
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            if let monitor { NSEvent.removeMonitor(monitor) }
+            monitor = nil
+            guard window != nil else { return }
+            monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+                guard let self, event.window === self.window, self.handle(event) else { return event }
+                return nil
             }
+        }
+
+        /// Returns true when the deck used the key.
+        private func handle(_ event: NSEvent) -> Bool {
+            // Never swallow keys while the user is typing in a field.
+            if window?.firstResponder is NSTextView { return false }
             switch event.keyCode {
             case 49: onStop?()          // space
             case 36, 76: onReplay?()    // return, keypad enter
@@ -479,12 +498,21 @@ struct KeyboardHandler: NSViewRepresentable {
                 guard !event.modifierFlags.contains(.command),
                       let characters = event.charactersIgnoringModifiers,
                       let first = characters.first,
-                      first.isLetter || first.isNumber else {
-                    super.keyDown(with: event)
-                    return
-                }
+                      first.isLetter || first.isNumber else { return false }
                 onCharacter?(String(first))
             }
+            return true
         }
+    }
+}
+
+/// The monitor waveform. Only this view observes the playhead.
+private struct MonitorWaveform: View {
+    let samples: [Float]
+    @ObservedObject var playhead: Playhead
+    let tint: Color
+
+    var body: some View {
+        WaveformView(samples: samples, progress: playhead.progress, tint: tint)
     }
 }

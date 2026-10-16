@@ -27,6 +27,8 @@ struct SoundItem: Identifiable, Codable, Equatable {
     let id: UUID
     /// Display name. Defaults to the file name but is renamable.
     var name: String
+    /// The name of the file. A rename does not change it. A bundled sound uses it to find its file.
+    let fileName: String
     var bookmarkData: Data?
     let isBundled: Bool
     /// Whether `bookmarkData` was created with `.withSecurityScope`. A bookmark must
@@ -48,6 +50,7 @@ struct SoundItem: Identifiable, Codable, Equatable {
     init(name: String) {
         self.id = UUID()
         self.name = name
+        self.fileName = name
         self.bookmarkData = nil
         self.isBundled = true
         self.isSecurityScoped = false
@@ -73,6 +76,7 @@ struct SoundItem: Identifiable, Codable, Equatable {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         id = try c.decode(UUID.self, forKey: .id)
         name = try c.decode(String.self, forKey: .name)
+        fileName = try c.decodeIfPresent(String.self, forKey: .fileName) ?? name
         bookmarkData = try c.decodeIfPresent(Data.self, forKey: .bookmarkData)
         isBundled = try c.decode(Bool.self, forKey: .isBundled)
         isSecurityScoped = try c.decodeIfPresent(Bool.self, forKey: .isSecurityScoped) ?? false
@@ -95,7 +99,7 @@ struct SoundItem: Identifiable, Codable, Equatable {
         if isBundled {
             guard let resourceURL = Bundle.main.resourceURL else { return nil }
             return SoundResolution(
-                url: resourceURL.appendingPathComponent(name),
+                url: resourceURL.appendingPathComponent(fileName),
                 refreshedBookmark: nil,
                 needsSecurityScope: false
             )

@@ -13,6 +13,14 @@ struct MenuBarDeck: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             header
+            if let error = engine.lastError {
+                Text(error)
+                    .font(.system(size: 10.5, design: .rounded))
+                    .foregroundStyle(SoundTint.rose.color)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, 12)
+                    .padding(.bottom, 8)
+            }
             Divider().opacity(0.4)
             soundList
             Divider().opacity(0.4)
@@ -57,7 +65,7 @@ struct MenuBarDeck: View {
                         isPlaying: engine.playingIDs.contains(sound.id),
                         showsGlobalHint: globalHotKeys
                     ) {
-                        try? engine.play(sound, in: library)
+                        engine.playReportingErrors(sound, in: library)
                     }
                 }
             }

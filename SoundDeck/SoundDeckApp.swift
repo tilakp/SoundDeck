@@ -32,7 +32,9 @@ struct SoundDeckApp: App {
             MenuBarDeck(library: library, engine: engine, rebind: rebindGlobalHotKeys)
         } label: {
             // Filled while something is sounding, so the menu bar reflects state.
-            Image(systemName: engine.playingIDs.isEmpty ? "waveform" : "waveform.circle.fill")
+            // A warning shows that the last play failed. The menu bar deck shows the error.
+            Image(systemName: engine.lastError != nil ? "exclamationmark.triangle"
+                  : engine.playingIDs.isEmpty ? "waveform" : "waveform.circle.fill")
         }
         .menuBarExtraStyle(.window)
     }
@@ -43,7 +45,7 @@ struct SoundDeckApp: App {
             return (key, { [weak library, weak engine] in
                 guard let library, let engine,
                       let current = library.sounds.first(where: { $0.id == sound.id }) else { return }
-                try? engine.play(current, in: library)
+                engine.playReportingErrors(current, in: library)
             })
         }
         GlobalHotKeys.shared.rebind(bindings)

@@ -47,6 +47,7 @@ final class AudioEngine: ObservableObject {
         case unreadable(path: String)
         case decodeFailed(underlying: Error)
         case engineFailed(underlying: Error)
+        case emptyTrim(name: String)
 
         var errorDescription: String? {
             switch self {
@@ -58,6 +59,8 @@ final class AudioEngine: ObservableObject {
                 return "Could not play that sound: \(underlying.localizedDescription)"
             case .engineFailed(let underlying):
                 return "Audio engine could not start: \(underlying.localizedDescription)"
+            case .emptyTrim(let name):
+                return "The trim of “\(name)” has no length. Open Edit and reset the trim."
             }
         }
     }
@@ -67,8 +70,11 @@ final class AudioEngine: ObservableObject {
     /// Sounds with at least one voice currently sounding.
     @Published private(set) var playingIDs: Set<UUID> = []
     @Published private(set) var lastPlayedID: UUID?
-    /// 0...1 progress of the most recently started voice, for the waveform playhead.
-    @Published private(set) var progress: Double = 0
+    /// The playhead updates 30 times each second. It is in a separate object, so that
+    /// only the monitor waveform draws again, not every view that observes the engine.
+    let playhead = Playhead()
+    /// The last error from `playReportingErrors`. A successful play clears it.
+    @Published private(set) var lastError: String?
     @Published private(set) var focusedSoundID: UUID?
     @Published private(set) var waveform: [Float]?
 
@@ -94,6 +100,8 @@ final class AudioEngine: ObservableObject {
     private var voices: [UUID: Voice] = [:]
     private var progressTimer: Timer?
     private var waveformToken = UUID()
+    /// The envelope of each sound that played. Thus a trigger does not decode the file again.
+    private var waveformCache: [UUID: [Float]] = [:]
 
     init() {
         if let stored = UserDefaults.standard.object(forKey: Self.masterVolumeKey) as? Float {
@@ -158,7 +166,7 @@ final class AudioEngine: ObservableObject {
             engine.detach(player)
             engine.detach(mixer)
             if didAccess { url.stopAccessingSecurityScopedResource() }
-            return
+            throw PlaybackError.emptyTrim(name: sound.name)
         }
 
         let voice = Voice(
@@ -177,8 +185,20 @@ final class AudioEngine: ObservableObject {
         playingIDs.insert(sound.id)
         lastPlayedID = sound.id
         focusedSoundID = sound.id
+        lastError = nil
         startProgressTimer()
-        loadWaveform(for: url)
+        loadWaveform(for: url, soundID: sound.id)
+    }
+
+    /// Plays a sound and keeps an error in `lastError`. Use it where no alert can show,
+    /// for example the menu bar deck and the global hotkeys.
+    func playReportingErrors(_ sound: SoundItem, in library: SoundLibrary) {
+        do {
+            try play(sound, in: library)
+        } catch {
+            print("[DEBUG] Could not play \(sound.name): \(error)")
+            lastError = error.localizedDescription
+        }
     }
 
     /// Re-schedules on completion when looping, so a loop survives arbitrary lengths
@@ -190,8 +210,12 @@ final class AudioEngine: ObservableObject {
             file,
             startingFrame: startFrame,
             frameCount: frameCount,
-            at: nil
-        ) { [weak self] in
+            at: nil,
+            // `.dataConsumed` fires when the engine reads the data, about 0.9 s before playback.
+            // A loop needs that early call for a gapless restart. A single play must wait for
+            // playback. If not, `retire()` cuts the tail, and a short clip gives no sound.
+            completionCallbackType: loops ? .dataConsumed : .dataPlayedBack
+        ) { [weak self] _ in
             // Completion arrives on an audio thread.
             Task { @MainActor in
                 guard let self, let live = self.voices[voice.id] else { return }
@@ -273,7 +297,7 @@ final class AudioEngine: ObservableObject {
         }
         if voices.isEmpty {
             stopProgressTimer()
-            progress = 0
+            playhead.progress = 0
             waveform = nil
             focusedSoundID = nil
             // Idling the engine releases the output device so other apps can change it.
@@ -306,21 +330,27 @@ final class AudioEngine: ObservableObject {
               let voice = voices.values.filter({ $0.soundID == focusedSoundID })
                   .max(by: { $0.startedAt < $1.startedAt }),
               voice.duration > 0 else {
-            progress = 0
+            playhead.progress = 0
             return
         }
         let elapsed = CACurrentMediaTime() - voice.startedAt
-        progress = min(1, max(0, elapsed / voice.duration))
+        playhead.progress = min(1, max(0, elapsed / voice.duration))
     }
 
     // MARK: - Waveform
 
-    private func loadWaveform(for url: URL) {
+    private func loadWaveform(for url: URL, soundID: UUID) {
         let token = UUID()
         waveformToken = token
+        if let cached = waveformCache[soundID] {
+            waveform = cached
+            return
+        }
         AVAsset(url: url).waveformSamples(sampleCount: 500) { [weak self] samples in
             Task { @MainActor in
-                guard let self, self.waveformToken == token else { return }
+                guard let self else { return }
+                if let samples { self.waveformCache[soundID] = samples }
+                guard self.waveformToken == token else { return }
                 self.waveform = samples
             }
         }
@@ -370,4 +400,10 @@ final class AudioEngine: ObservableObject {
         }
         return device.name
     }
+}
+
+/// The position of the playhead, from 0 to 1, for the most recently started voice.
+@MainActor
+final class Playhead: ObservableObject {
+    @Published var progress: Double = 0
 }
