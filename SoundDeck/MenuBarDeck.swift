@@ -132,6 +132,7 @@ struct MenuBarDeck: View {
                 NSApp.activate(ignoringOtherApps: true)
                 NSApp.windows.first(where: { $0.canBecomeMain })?.makeKeyAndOrderFront(nil)
             }
+            Button("Floating Deck") { FloatingDeck.shared?.toggle() }
             Button("Settings…") {
                 // Activate first. Otherwise the Settings window opens behind the front app.
                 NSApp.activate(ignoringOtherApps: true)
