@@ -169,7 +169,7 @@ struct ContentView: View {
                 Text("Add")
             }
             .font(Theme.Font.body(.semibold))
-            .foregroundStyle(Color.white)
+            .foregroundStyle(Theme.onFill)
             .padding(.horizontal, Theme.Spacing.m)
             .padding(.vertical, Theme.Spacing.s)
             .background(
@@ -177,7 +177,10 @@ struct ContentView: View {
                     .fill(Theme.accent)
             )
         }
-        .menuStyle(.borderlessButton)
+        // The button menu style with a plain button style keeps the custom label.
+        // The borderless menu style draws only the text, without the accent fill.
+        .menuStyle(.button)
+        .buttonStyle(.plain)
         .menuIndicator(.hidden)
         .fixedSize()
     }
@@ -888,7 +891,7 @@ private struct StopAllButton: View {
                 Text("Stop All")
             }
             .font(Theme.Font.body(.semibold))
-            .foregroundStyle(active ? Color.white : Theme.textSecondary)
+            .foregroundStyle(active ? Theme.onFill : Theme.textSecondary)
             .padding(.horizontal, Theme.Spacing.m)
             .padding(.vertical, Theme.Spacing.s)
             .background(background)

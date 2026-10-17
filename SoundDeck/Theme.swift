@@ -110,6 +110,10 @@ enum Theme {
     /// The Stop All control while sound plays, and playback errors. It is the same rose as `SoundTint.rose`.
     static let danger: Color = adaptive(light: rgb(0.80, 0.14, 0.32), dark: rgb(1.00, 0.44, 0.55))
 
+    /// Text and icons on an `accent` or `danger` fill. The dark fills are bright, so white
+    /// text on them has too little contrast. Dark mode uses near-black text instead.
+    static let onFill: Color = adaptive(light: rgb(1, 1, 1), dark: rgb(0.027, 0.031, 0.047))
+
     /// The pad tints. The light values are deeper, for contrast on white.
     fileprivate static let amber: Color = adaptive(light: rgb(0.60, 0.36, 0.0), dark: rgb(1.00, 0.72, 0.30))
     fileprivate static let violet: Color = adaptive(light: rgb(0.50, 0.26, 0.86), dark: rgb(0.72, 0.48, 1.00))

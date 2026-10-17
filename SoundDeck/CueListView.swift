@@ -66,7 +66,7 @@ struct CueListView: View {
                     Text("Go")
                 }
                 .font(Theme.Font.title())
-                .foregroundStyle(standby < sounds.count ? Color.white : Theme.textTertiary)
+                .foregroundStyle(standby < sounds.count ? Theme.onFill : Theme.textTertiary)
                 .frame(minWidth: 96)
                 .padding(.horizontal, Theme.Spacing.l)
                 .padding(.vertical, Theme.Spacing.m)

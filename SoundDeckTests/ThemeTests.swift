@@ -70,11 +70,13 @@ func backdropTextOnTintPassesContrast(appearance: NSAppearance.Name) throws {
     }
 }
 
-/// The Add, Go and Stop All controls put white text on the accent or the danger colour.
-/// The dark values give 2.6:1 to 3.1:1. This task did not change the dark design.
-@Test func whiteTextOnLightAccentPassesContrast() throws {
-    for fill in [Theme.accent, Theme.danger] {
-        #expect(try contrast(of: .white, on: fill, in: .aqua) >= 4.5)
+/// The Add, Go and Stop All controls put `onFill` text on the accent or the danger colour.
+/// White on the bright dark fills gives only 2.6:1 to 3.1:1, so dark mode uses near-black text.
+@Test func textOnAccentAndDangerFillsPassesContrast() throws {
+    for appearance in [NSAppearance.Name.aqua, .darkAqua] {
+        for fill in [Theme.accent, Theme.danger] {
+            #expect(try contrast(of: Theme.onFill, on: fill, in: appearance) >= 4.5)
+        }
     }
 }
 
