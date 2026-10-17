@@ -8,22 +8,39 @@ import SwiftUI
 struct SettingsView: View {
     let rebindHotKeys: () -> Void
 
+    /// The tab names. Another view can set `selectedTabKey` before it opens Settings,
+    /// to show a given tab.
+    enum Tab: String {
+        case general, audio, midi, osc, webRemote, twitch, freesound
+    }
+
+    static let selectedTabKey = "settingsSelectedTab"
+
+    @AppStorage(SettingsView.selectedTabKey) private var selection = Tab.general.rawValue
+
     var body: some View {
-        TabView {
+        TabView(selection: $selection) {
             GeneralSettings(rebindHotKeys: rebindHotKeys)
                 .tabItem { Label("General", systemImage: "gearshape") }
+                .tag(Tab.general.rawValue)
             AudioSettings()
                 .tabItem { Label("Audio", systemImage: "speaker.wave.2") }
+                .tag(Tab.audio.rawValue)
             MIDISettings()
                 .tabItem { Label("MIDI", systemImage: "pianokeys") }
+                .tag(Tab.midi.rawValue)
             OSCSettings()
                 .tabItem { Label("OSC", systemImage: "network") }
+                .tag(Tab.osc.rawValue)
             WebRemoteSettings()
                 .tabItem { Label("Web Remote", systemImage: "iphone") }
+                .tag(Tab.webRemote.rawValue)
             TwitchSettings()
                 .tabItem { Label("Twitch", systemImage: "bubble.left.and.bubble.right") }
+                .tag(Tab.twitch.rawValue)
             FreesoundSettings()
                 .tabItem { Label("Freesound", systemImage: "magnifyingglass") }
+                .tag(Tab.freesound.rawValue)
         }
         .frame(width: 520, height: 360)
     }

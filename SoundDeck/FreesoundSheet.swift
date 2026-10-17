@@ -79,6 +79,7 @@ struct FreesoundSheet: View {
             HStack {
                 Button("Open Settings") {
                     dismiss()
+                    UserDefaults.standard.set(SettingsView.Tab.freesound.rawValue, forKey: SettingsView.selectedTabKey)
                     openSettings()
                 }
                 Link("Apply for a key", destination: FreesoundSettings.applyURL)
