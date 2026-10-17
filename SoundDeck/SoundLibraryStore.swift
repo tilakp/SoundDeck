@@ -22,12 +22,16 @@ final class SoundLibraryStore {
         var activeDeckID: UUID
         /// The version of the file that the store read. A save always writes `currentVersion`.
         var version = SoundLibraryStore.currentVersion
+        /// The ids of the pads that played last, the most recent first.
+        var recentIDs: [UUID] = []
     }
 
     private struct Payload: Codable {
         var version: Int
         var decks: [Deck]?
         var activeDeckID: UUID?
+        /// Optional, because earlier files do not have it.
+        var recentIDs: [UUID]?
         /// Version 1 only.
         var sounds: [Lossy<SoundItem>]?
     }
@@ -91,7 +95,7 @@ final class SoundLibraryStore {
             decks = [Deck(name: defaultDeckName, sounds: (payload.sounds ?? []).compactMap(\.value))]
         }
         let active = payload.activeDeckID.flatMap { id in decks.first { $0.id == id }?.id } ?? decks[0].id
-        return State(decks: decks, activeDeckID: active, version: payload.version)
+        return State(decks: decks, activeDeckID: active, version: payload.version, recentIDs: payload.recentIDs ?? [])
     }
 
     /// Counts the sounds in the file without the model, so that skipped sounds show.
@@ -121,7 +125,10 @@ final class SoundLibraryStore {
     static func encode(_ state: State) throws -> Data {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        return try encoder.encode(Payload(version: currentVersion, decks: state.decks, activeDeckID: state.activeDeckID, sounds: nil))
+        return try encoder.encode(Payload(
+            version: currentVersion, decks: state.decks, activeDeckID: state.activeDeckID,
+            recentIDs: state.recentIDs, sounds: nil
+        ))
     }
 
     func save(_ state: State) {

@@ -33,6 +33,7 @@ struct DeckArchive: Codable {
         var fadeOut: Double?
         var pitch: Double?
         var speed: Double?
+        var isFavorite: Bool?
         var audio: Data
     }
 
@@ -84,6 +85,7 @@ extension SoundLibrary {
                 fadeOut: sound.fadeOut,
                 pitch: sound.pitch,
                 speed: sound.speed,
+                isFavorite: sound.isFavorite,
                 audio: audio
             )
         }
@@ -126,6 +128,7 @@ extension SoundLibrary {
             item.fadeOut = entry.fadeOut ?? SoundItem.defaultFadeOut
             item.pitch = entry.pitch ?? 0
             item.speed = entry.speed ?? 1
+            item.isFavorite = entry.isFavorite ?? false
             files[item.id] = entry.audio
             return item
         }

@@ -81,6 +81,8 @@ struct SoundItem: Identifiable, Codable, Equatable {
     var emoji: String?
     /// Single character used as this sound's keyboard trigger.
     var hotKey: String?
+    /// The pad shows in the Favorites smart deck.
+    var isFavorite: Bool
 
     // MARK: Loudness
     /// Integrated loudness in LUFS. Nil before the measurement and for a silent file.
@@ -148,6 +150,7 @@ struct SoundItem: Identifiable, Codable, Equatable {
         self.tint = .none
         self.emoji = nil
         self.hotKey = nil
+        self.isFavorite = false
         self.measuredLoudness = nil
         self.measuredPeak = nil
         self.matchesLoudness = true
@@ -179,6 +182,7 @@ struct SoundItem: Identifiable, Codable, Equatable {
         tint = (try? c.decodeIfPresent(SoundTint.self, forKey: .tint)) ?? .none
         emoji = try c.decodeIfPresent(String.self, forKey: .emoji)
         hotKey = try c.decodeIfPresent(String.self, forKey: .hotKey)
+        isFavorite = try c.decodeIfPresent(Bool.self, forKey: .isFavorite) ?? false
         measuredLoudness = try c.decodeIfPresent(Double.self, forKey: .measuredLoudness)
         measuredPeak = try c.decodeIfPresent(Float.self, forKey: .measuredPeak)
         matchesLoudness = try c.decodeIfPresent(Bool.self, forKey: .matchesLoudness) ?? true

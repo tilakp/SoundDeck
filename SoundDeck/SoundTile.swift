@@ -21,6 +21,10 @@ struct SoundTile: View {
     /// The other decks. The context menu can move the pad to one of them.
     let moveTargets: [(id: UUID, name: String)]
     let moveToDeck: (UUID) -> Void
+    /// The deck of the pad is locked. The menu disables the items that change the pad.
+    var isLocked = false
+    /// The name of the deck of the pad. The grid gives it when it shows pads from all decks.
+    var deckLabel: String? = nil
 
     @State private var hovering = false
     @State private var pressed = false
@@ -107,6 +111,12 @@ struct SoundTile: View {
 
     private var footer: some View {
         HStack(spacing: Theme.Spacing.s) {
+            if let deckLabel {
+                Text(deckLabel)
+                    .font(Theme.Font.caption(.medium))
+                    .foregroundStyle(Theme.textTertiary)
+                    .lineLimit(1)
+            }
             // A loop changes what a press does. The other modes do not show a glyph.
             if sound.loops {
                 Image(systemName: "repeat")
@@ -205,7 +215,12 @@ struct SoundTile: View {
         Button("Play") { play() }
         if isPlaying { Button("Stop") { stop() } }
         Divider()
+        Toggle("Favorite", isOn: Binding(
+            get: { sound.isFavorite },
+            set: { newValue in update { $0.isFavorite = newValue } }
+        ))
         Button("Edit…") { openInspector() }
+            .disabled(isLocked)
 
         Menu("Colour") {
             ForEach(SoundTint.allCases) { option in
@@ -219,6 +234,7 @@ struct SoundTile: View {
                 }
             }
         }
+        .disabled(isLocked)
 
         Menu("Icon") {
             Button("None") { update { $0.emoji = nil } }
@@ -226,6 +242,7 @@ struct SoundTile: View {
                 Button(emoji) { update { $0.emoji = emoji } }
             }
         }
+        .disabled(isLocked)
 
         Menu("Hotkey") {
             Button("None") { update { $0.hotKey = nil } }
@@ -233,11 +250,13 @@ struct SoundTile: View {
                 Button(key) { update { $0.hotKey = key } }
             }
         }
+        .disabled(isLocked)
 
         Toggle("Loop", isOn: Binding(
             get: { sound.loops },
             set: { newValue in update { $0.loops = newValue } }
         ))
+        .disabled(isLocked)
 
         if !moveTargets.isEmpty {
             Menu("Move to Deck") {
@@ -245,10 +264,12 @@ struct SoundTile: View {
                     Button(target.name) { moveToDeck(target.id) }
                 }
             }
+            .disabled(isLocked)
         }
 
         Divider()
         Button("Remove", role: .destructive) { remove() }
+            .disabled(isLocked)
     }
 }
 

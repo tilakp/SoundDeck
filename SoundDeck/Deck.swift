@@ -6,11 +6,14 @@ struct Deck: Identifiable, Codable, Equatable {
     let id: UUID
     var name: String
     var sounds: [SoundItem]
+    /// A locked deck refuses changes to its pads and to the deck. Its pads still play.
+    var isLocked: Bool
 
-    init(name: String, sounds: [SoundItem] = []) {
+    init(name: String, sounds: [SoundItem] = [], isLocked: Bool = false) {
         self.id = UUID()
         self.name = name
         self.sounds = sounds
+        self.isLocked = isLocked
     }
 
     // Decode leniently, as `SoundItem` does.
@@ -19,6 +22,7 @@ struct Deck: Identifiable, Codable, Equatable {
         id = try c.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
         name = try c.decodeIfPresent(String.self, forKey: .name) ?? "Deck"
         sounds = (try c.decodeIfPresent([Lossy<SoundItem>].self, forKey: .sounds) ?? []).compactMap(\.value)
+        isLocked = try c.decodeIfPresent(Bool.self, forKey: .isLocked) ?? false
     }
 }
 

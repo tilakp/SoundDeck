@@ -356,10 +356,14 @@ struct ContentView: View {
 
     // MARK: - Deck bar
 
-    /// The decks. Keys play pads of the active deck only.
+    /// The smart decks, then the decks. Keys play pads of the active deck only.
+    /// A smart deck does not change the active deck, so the keys keep the last real deck.
     private var deckBar: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: Theme.Spacing.s) {
+                ForEach(SmartDeck.allCases) { smart in smartChip(smart) }
+                Divider()
+                    .frame(height: 16)
                 ForEach(library.decks) { deck in deckChip(deck) }
                 Menu {
                     Button("New Deck") {
@@ -382,34 +386,68 @@ struct ContentView: View {
         }
     }
 
+    /// A smart deck shows pads from all decks. It is read-only.
+    private func smartChip(_ smart: SmartDeck) -> some View {
+        let isActive = library.smartDeck == smart
+        return Button {
+            library.selectSmartDeck(smart)
+        } label: {
+            chipLabel(smart.title, isActive: isActive, isKeyDeck: false) {
+                Image(systemName: smart.symbol)
+                    .font(Theme.Font.caption(.semibold))
+            }
+        }
+        .buttonStyle(.plain)
+        .help("\(smart.title) from all decks")
+    }
+
     private func deckChip(_ deck: Deck) -> some View {
-        let isActive = deck.id == library.activeDeckID
+        let isKeyDeck = deck.id == library.activeDeckID
+        let isActive = isKeyDeck && library.smartDeck == nil
         return Button {
             library.selectDeck(deck.id)
         } label: {
-            Text(deck.name)
-                .font(Theme.Font.body(isActive ? .semibold : .medium))
-                .foregroundStyle(isActive ? Theme.textPrimary : Theme.textSecondary)
-                .lineLimit(1)
-                .padding(.horizontal, Theme.Spacing.m)
-                .padding(.vertical, Theme.Spacing.xs)
-                .background(
-                    RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous)
-                        .fill(isActive ? Theme.surfaceRaised : Color.clear)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous)
-                                .strokeBorder(isActive ? Theme.strokeStrong : Theme.stroke, lineWidth: 1)
-                        )
-                )
+            chipLabel(deck.name, isActive: isActive, isKeyDeck: isKeyDeck) {
+                if deck.isLocked {
+                    Image(systemName: "lock.fill")
+                        .font(Theme.Font.caption(.semibold))
+                        .foregroundStyle(Theme.textTertiary)
+                        .accessibilityLabel("Locked")
+                }
+            }
         }
         .buttonStyle(.plain)
         .contextMenu {
             Button("Rename…") { startRenaming(deck) }
+                .disabled(deck.isLocked)
             Button("Export…") { export(deck) }
+            Button(deck.isLocked ? "Unlock" : "Lock") { library.setLocked(deck.id, !deck.isLocked) }
             Divider()
             Button("Delete…", role: .destructive) { deletingDeck = deck }
-                .disabled(library.decks.count < 2)
+                .disabled(library.decks.count < 2 || deck.isLocked)
         }
+    }
+
+    /// The chip of a deck. `isKeyDeck` keeps a strong edge on the deck that the keys use
+    /// while a smart deck shows.
+    private func chipLabel<Glyph: View>(
+        _ title: String, isActive: Bool, isKeyDeck: Bool, @ViewBuilder glyph: () -> Glyph
+    ) -> some View {
+        let shape = RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous)
+        return HStack(spacing: Theme.Spacing.xs) {
+            glyph()
+            Text(title)
+                .font(Theme.Font.body(isActive ? .semibold : .medium))
+                .lineLimit(1)
+        }
+        .foregroundStyle(isActive ? Theme.textPrimary : Theme.textSecondary)
+        .padding(.horizontal, Theme.Spacing.m)
+        .padding(.vertical, Theme.Spacing.xs)
+        .background(
+            shape
+                .fill(isActive ? Theme.surfaceRaised : Color.clear)
+                .overlay(shape.strokeBorder(isActive || isKeyDeck ? Theme.strokeStrong : Theme.stroke, lineWidth: 1))
+        )
     }
 
     private func startRenaming(_ deck: Deck) {
@@ -495,10 +533,10 @@ struct ContentView: View {
                                 },
                                 update: { mutate in library.update(sound, mutate) },
                                 openInspector: { inspecting = sound },
-                                moveTargets: library.decks
-                                    .filter { $0.id != library.activeDeckID }
-                                    .map { (id: $0.id, name: $0.name) },
-                                moveToDeck: { library.moveSound(sound, toDeck: $0) }
+                                moveTargets: library.moveTargets(for: sound),
+                                moveToDeck: { library.moveSound(sound, toDeck: $0) },
+                                isLocked: library.isLocked(sound),
+                                deckLabel: library.showsAllDecks ? library.deckName(of: sound.id) : nil
                             )
                             .focused($focusedPadID, equals: sound.id)
                             .onDrag {
@@ -522,18 +560,31 @@ struct ContentView: View {
     }
 
     private var emptyState: some View {
-        VStack(spacing: Theme.Spacing.m) {
-            Image(systemName: library.searchText.isEmpty ? "waveform.badge.plus" : "magnifyingglass")
+        let text = emptyStateText
+        return VStack(spacing: Theme.Spacing.m) {
+            Image(systemName: text.symbol)
                 .font(.system(size: 34, weight: .light))
                 .foregroundStyle(Theme.textTertiary)
-            Text(library.searchText.isEmpty ? "Your deck is empty" : "No matches")
+            Text(text.title)
                 .font(Theme.Font.title())
                 .foregroundStyle(Theme.textSecondary)
-            Text(library.searchText.isEmpty
-                 ? "Drop audio files here, or use Add."
-                 : "Nothing matches “\(library.searchText)”.")
+            Text(text.detail)
                 .font(Theme.Font.body())
                 .foregroundStyle(Theme.textTertiary)
+        }
+    }
+
+    private var emptyStateText: (symbol: String, title: String, detail: String) {
+        if library.isSearching {
+            return ("magnifyingglass", "No matches", "No pad in any deck matches “\(library.searchText)”.")
+        }
+        switch library.smartDeck {
+        case .favorites:
+            return ("star", "No favorites", "Right-click a pad and choose Favorite.")
+        case .recent:
+            return ("clock", "Nothing played yet", "The pads that you play show here.")
+        case nil:
+            return ("waveform.badge.plus", "Your deck is empty", "Drop audio files here, or use Add.")
         }
     }
 
