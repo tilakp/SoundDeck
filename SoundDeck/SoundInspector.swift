@@ -29,6 +29,7 @@ struct SoundInspector: View {
     @State private var tint: SoundTint = .none
     @State private var emoji: String = ""
     @State private var hotKey: String = ""
+    @State private var midiTrigger: MIDITrigger?
     @State private var showsShape = false
 
     @State private var samples: [Float]?
@@ -129,6 +130,10 @@ struct SoundInspector: View {
             GridRow(alignment: .firstTextBaseline) {
                 rowLabel("Key")
                 keyRow
+            }
+            GridRow(alignment: .firstTextBaseline) {
+                rowLabel("MIDI")
+                MIDITriggerField(owner: sound.id.uuidString, trigger: $midiTrigger, tint: tint.color)
             }
             GridRow(alignment: .center) {
                 rowLabel("Look")
@@ -340,6 +345,7 @@ struct SoundInspector: View {
         tint = sound.tint
         emoji = sound.emoji ?? ""
         hotKey = sound.hotKey ?? ""
+        midiTrigger = sound.midiTrigger
         showsShape = Self.hasCustomShape(fadeIn: fadeIn, fadeOut: fadeOut, pitch: pitch, speed: speed)
 
         guard let resolution = library.resolve(sound) else { return }
@@ -390,6 +396,7 @@ struct SoundInspector: View {
             item.tint = tint
             item.emoji = emoji.isEmpty ? nil : emoji
             item.hotKey = hotKey.isEmpty ? nil : hotKey
+            item.midiTrigger = midiTrigger
             // Before the duration loads, the trim values are not real. Keep the saved trim.
             guard duration > 0 else { return }
             item.trimStart = trimStart
