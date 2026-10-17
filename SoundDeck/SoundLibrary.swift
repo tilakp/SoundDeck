@@ -394,6 +394,18 @@ final class SoundLibrary: ObservableObject {
         return resolution
     }
 
+    // MARK: - Cue list
+
+    func setLayout(_ layout: DeckLayout) {
+        decks[activeIndex].layout = layout
+        save()
+    }
+
+    /// Sets the standby cue of the active deck. The library file does not keep it, so this does not save.
+    func setCueIndex(_ index: Int) {
+        decks[activeIndex].cueIndex = CueList.clamp(index, count: sounds.count)
+    }
+
     // MARK: - Persistence
 
     func save() { store.save(SoundLibraryStore.State(decks: decks, activeDeckID: activeDeckID)) }

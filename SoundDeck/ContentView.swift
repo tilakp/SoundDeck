@@ -32,7 +32,7 @@ struct ContentView: View {
                 header
                 monitor
                 deckBar
-                deck
+                deckArea
             }
             .padding(Theme.Spacing.l)
 
@@ -43,7 +43,8 @@ struct ContentView: View {
             onStop: { engine.stopAll() },
             onReplay: replayOrFireFocusedPad,
             onCharacter: triggerHotKey,
-            onRelease: releaseHotKey
+            onRelease: releaseHotKey,
+            onGo: library.activeDeck.layout == .cueList ? goCue : nil
         ))
         .fileImporter(
             isPresented: $showingFileImporter,
@@ -464,6 +465,39 @@ struct ContentView: View {
         focusedPadID = sounds[target].id
     }
 
+    /// The grid or the cue list of the active deck, with the layout control above it.
+    private var deckArea: some View {
+        VStack(spacing: Theme.Spacing.s) {
+            HStack {
+                Spacer()
+                Picker("Layout", selection: Binding(
+                    get: { library.activeDeck.layout },
+                    set: { library.setLayout($0) }
+                )) {
+                    ForEach(DeckLayout.allCases) { Text($0.label).tag($0) }
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .controlSize(.small)
+                .fixedSize()
+                .help("Show the deck as a grid of pads or as a cue list")
+            }
+            if library.activeDeck.layout == .cueList {
+                CueListView(library: library, engine: engine, go: goCue)
+            } else {
+                deck
+            }
+        }
+    }
+
+    /// Plays the standby cue of the cue list and moves the standby to the next row.
+    private func goCue() {
+        let sounds = library.activeDeck.sounds
+        let step = CueList.go(standby: library.activeDeck.cueIndex, count: sounds.count)
+        library.setCueIndex(step.standby)
+        if let index = step.play { play(sounds[index]) }
+    }
+
     private var deck: some View {
         GeometryReader { geometry in
             let columns = gridColumns(for: geometry.size.width)
@@ -684,6 +718,8 @@ struct KeyboardHandler: NSViewRepresentable {
     let onReplay: () -> Void
     let onCharacter: (String) -> Void
     let onRelease: (String) -> Void
+    /// Plays the next cue. Nil when the deck is not a cue list. Then the Go key does nothing.
+    var onGo: (() -> Void)?
 
     func makeNSView(context: Context) -> NSView {
         let view = KeyCatcher()
@@ -697,6 +733,7 @@ struct KeyboardHandler: NSViewRepresentable {
         view.onReplay = onReplay
         view.onCharacter = onCharacter
         view.onRelease = onRelease
+        view.onGo = onGo
     }
 
     final class KeyCatcher: NSView {
@@ -704,6 +741,7 @@ struct KeyboardHandler: NSViewRepresentable {
         var onReplay: (() -> Void)?
         var onCharacter: ((String) -> Void)?
         var onRelease: ((String) -> Void)?
+        var onGo: (() -> Void)?
         private var monitor: Any?
 
         override func viewDidMoveToWindow() {
@@ -726,6 +764,11 @@ struct KeyboardHandler: NSViewRepresentable {
                 onRelease?(character)
                 return true
             }
+            // The period key is Go. Pads use only letters and digits, so no pad loses its key.
+            if let onGo, Self.isGoKey(event) {
+                if !event.isARepeat { onGo() }
+                return true
+            }
             // A held key repeats. The pad plays one time for each press.
             if event.isARepeat { return Self.padCharacter(of: event) != nil || [36, 49, 76].contains(event.keyCode) }
             switch event.keyCode {
@@ -736,6 +779,11 @@ struct KeyboardHandler: NSViewRepresentable {
                 onCharacter?(character)
             }
             return true
+        }
+
+        /// The period key, on the main keys or on the keypad, with no Command key.
+        private static func isGoKey(_ event: NSEvent) -> Bool {
+            !event.modifierFlags.contains(.command) && event.charactersIgnoringModifiers == "."
         }
 
         /// The letter or digit of a pad key. Nil for other keys and for Command shortcuts.
@@ -800,6 +848,7 @@ private struct ShortcutList: View {
         ("Space", "Stop all sounds"),
         ("Return", "Play the last pad again"),
         ("A–Z, 0–9", "Play the pad with that key"),
+        (".", "Go: play the standby cue (List)"),
         ("⌘F", "Search"),
         ("Esc", "Leave the search field")
     ]

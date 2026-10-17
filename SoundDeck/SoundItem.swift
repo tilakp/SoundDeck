@@ -81,6 +81,8 @@ struct SoundItem: Identifiable, Codable, Equatable {
     var emoji: String?
     /// Single character used as this sound's keyboard trigger.
     var hotKey: String?
+    /// A note for the cue list, for example "After the intro". Nil means no note.
+    var note: String?
 
     // MARK: Loudness
     /// Integrated loudness in LUFS. Nil before the measurement and for a silent file.
@@ -179,6 +181,7 @@ struct SoundItem: Identifiable, Codable, Equatable {
         tint = (try? c.decodeIfPresent(SoundTint.self, forKey: .tint)) ?? .none
         emoji = try c.decodeIfPresent(String.self, forKey: .emoji)
         hotKey = try c.decodeIfPresent(String.self, forKey: .hotKey)
+        note = try c.decodeIfPresent(String.self, forKey: .note)
         measuredLoudness = try c.decodeIfPresent(Double.self, forKey: .measuredLoudness)
         measuredPeak = try c.decodeIfPresent(Float.self, forKey: .measuredPeak)
         matchesLoudness = try c.decodeIfPresent(Bool.self, forKey: .matchesLoudness) ?? true
