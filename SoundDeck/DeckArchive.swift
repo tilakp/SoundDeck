@@ -34,6 +34,7 @@ struct DeckArchive: Codable {
         var pitch: Double?
         var speed: Double?
         var midiTrigger: MIDITrigger?
+        var credit: String?
         var audio: Data
     }
 
@@ -86,6 +87,7 @@ extension SoundLibrary {
                 pitch: sound.pitch,
                 speed: sound.speed,
                 midiTrigger: sound.midiTrigger,
+                credit: sound.credit,
                 audio: audio
             )
         }
@@ -129,6 +131,7 @@ extension SoundLibrary {
             item.pitch = entry.pitch ?? 0
             item.speed = entry.speed ?? 1
             item.midiTrigger = entry.midiTrigger
+            item.credit = entry.credit
             files[item.id] = entry.audio
             return item
         }
