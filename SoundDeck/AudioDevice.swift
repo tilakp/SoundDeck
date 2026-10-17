@@ -25,10 +25,31 @@ enum AudioDeviceList {
     /// Every device that has at least one output channel.
     static func outputDevices() -> [AudioDevice] {
         deviceIDs().compactMap { id in
-            guard outputChannelCount(of: id) > 0 else { return nil }
+            guard channelCount(of: id, scope: kAudioDevicePropertyScopeOutput) > 0 else { return nil }
             guard let name = stringProperty(kAudioObjectPropertyName, of: id) else { return nil }
             return AudioDevice(id: id, name: name, uid: stringProperty(kAudioDevicePropertyDeviceUID, of: id))
         }
+    }
+
+    /// Every device that has at least one input channel.
+    static func inputDevices() -> [AudioDevice] {
+        deviceIDs().compactMap { id in
+            guard channelCount(of: id, scope: kAudioDevicePropertyScopeInput) > 0 else { return nil }
+            guard let name = stringProperty(kAudioObjectPropertyName, of: id) else { return nil }
+            return AudioDevice(id: id, name: name, uid: stringProperty(kAudioDevicePropertyDeviceUID, of: id))
+        }
+    }
+
+    static func defaultInputDevice() -> AudioDeviceID? {
+        var address = AudioObjectPropertyAddress(
+            mSelector: kAudioHardwarePropertyDefaultInputDevice,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        var deviceID = AudioDeviceID(0)
+        var size = UInt32(MemoryLayout<AudioDeviceID>.size)
+        let status = AudioObjectGetPropertyData(AudioObjectID(kAudioObjectSystemObject), &address, 0, nil, &size, &deviceID)
+        return status == noErr && deviceID != kAudioObjectUnknown ? deviceID : nil
     }
 
     static func defaultOutputDevice() -> AudioDeviceID? {
@@ -58,9 +79,11 @@ enum AudioDeviceList {
     }
 
     /// Calls `handler` on the main queue when a device is added or removed, or when the
-    /// default output changes. The listeners stay for the life of the application.
+    /// default output or input changes. The listeners stay for the life of the application.
     static func observeChanges(_ handler: @escaping () -> Void) {
-        for selector in [kAudioHardwarePropertyDevices, kAudioHardwarePropertyDefaultOutputDevice] {
+        let selectors = [kAudioHardwarePropertyDevices, kAudioHardwarePropertyDefaultOutputDevice,
+                         kAudioHardwarePropertyDefaultInputDevice]
+        for selector in selectors {
             var address = AudioObjectPropertyAddress(
                 mSelector: selector,
                 mScope: kAudioObjectPropertyScopeGlobal,
@@ -93,10 +116,10 @@ enum AudioDeviceList {
         return ids
     }
 
-    private static func outputChannelCount(of device: AudioDeviceID) -> Int {
+    private static func channelCount(of device: AudioDeviceID, scope: AudioObjectPropertyScope) -> Int {
         var address = AudioObjectPropertyAddress(
             mSelector: kAudioDevicePropertyStreamConfiguration,
-            mScope: kAudioDevicePropertyScopeOutput,
+            mScope: scope,
             mElement: kAudioObjectPropertyElementMain
         )
         var size: UInt32 = 0

@@ -106,6 +106,8 @@ struct SoundItem: Identifiable, Codable, Equatable {
     var pitch: Double
     /// Playback rate, from 0.5 to 2.
     var speed: Double
+    /// The outputs of the pad when a Monitor device is set.
+    var output: PadOutput
 
     static let defaultFadeOut = 0.12
 
@@ -158,6 +160,7 @@ struct SoundItem: Identifiable, Codable, Equatable {
         self.fadeOut = Self.defaultFadeOut
         self.pitch = 0
         self.speed = 1
+        self.output = .both
     }
 
     // Every added field is decoded leniently. Libraries written by earlier builds must
@@ -189,6 +192,7 @@ struct SoundItem: Identifiable, Codable, Equatable {
         fadeOut = try c.decodeIfPresent(Double.self, forKey: .fadeOut) ?? Self.defaultFadeOut
         pitch = try c.decodeIfPresent(Double.self, forKey: .pitch) ?? 0
         speed = try c.decodeIfPresent(Double.self, forKey: .speed) ?? 1
+        output = (try? c.decodeIfPresent(PadOutput.self, forKey: .output)) ?? .both
     }
 
     /// Initial for the button badge when no emoji is set.
