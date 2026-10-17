@@ -38,6 +38,7 @@ struct SoundDeckApp: App {
             OSCServer.shared.startIfEnabled()
             TwitchChat.shared.restart()
             WebRemoteServer.shared.startIfEnabled()
+            MIDIControl.shared.startIfEnabled()
             // Wait for the end of the launch. Then open the floating deck if it was open at the last quit.
             DispatchQueue.main.async { floatingDeck.restore() }
         }

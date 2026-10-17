@@ -81,6 +81,8 @@ struct SoundItem: Identifiable, Codable, Equatable {
     var emoji: String?
     /// Single character used as this sound's keyboard trigger.
     var hotKey: String?
+    /// The MIDI note or controller that plays this pad. Nil means no mapping.
+    var midiTrigger: MIDITrigger?
 
     // MARK: Loudness
     /// Integrated loudness in LUFS. Nil before the measurement and for a silent file.
@@ -148,6 +150,7 @@ struct SoundItem: Identifiable, Codable, Equatable {
         self.tint = .none
         self.emoji = nil
         self.hotKey = nil
+        self.midiTrigger = nil
         self.measuredLoudness = nil
         self.measuredPeak = nil
         self.matchesLoudness = true
@@ -179,6 +182,8 @@ struct SoundItem: Identifiable, Codable, Equatable {
         tint = (try? c.decodeIfPresent(SoundTint.self, forKey: .tint)) ?? .none
         emoji = try c.decodeIfPresent(String.self, forKey: .emoji)
         hotKey = try c.decodeIfPresent(String.self, forKey: .hotKey)
+        // A mapping from a newer build is not an error. The pad gets no mapping.
+        midiTrigger = (try? c.decodeIfPresent(MIDITrigger.self, forKey: .midiTrigger)) ?? nil
         measuredLoudness = try c.decodeIfPresent(Double.self, forKey: .measuredLoudness)
         measuredPeak = try c.decodeIfPresent(Float.self, forKey: .measuredPeak)
         matchesLoudness = try c.decodeIfPresent(Bool.self, forKey: .matchesLoudness) ?? true
