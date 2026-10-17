@@ -26,6 +26,7 @@ Sound Deck is a soundboard for macOS. Add your audio files to the deck. Press a 
 - You can trim a sound to a shorter section.
 - You can set a sound to loop.
 - Each sound has a three-band EQ.
+- The app follows the light or dark appearance of the system.
 - A pad shows its progress while it plays. A pad that fails shows a red mark. The window never shows an alert during a show.
 - The deck shows a waveform and a playhead during playback.
 

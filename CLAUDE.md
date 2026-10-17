@@ -272,6 +272,8 @@ This folder is a Node.js project for the Elgato Stream Deck. It is not in the Xc
 
 This file holds the palette, the chrome, the motion values and the design tokens. `Theme.Font` gives four type sizes: caption 11, body 13, title 15 and numeral 20. Pad names and key caps use the rounded design. `Theme.Radius` gives small 6, control 8 and container 12. `Theme.Spacing` gives 4, 8, 12, 16 and 24. Do not add literal sizes in views. Use a token.
 
+Each colour token has a light value and a dark value, so the app follows the system appearance. The function `Theme.adaptive` makes a dynamic `NSColor`. Do not use a literal colour in a view. Add a token. Text on an `accent` or `danger` fill uses `Theme.onFill`, which is near-black in dark mode. The test `ThemeTests` checks text contrast in the two appearances.
+
 The surfaces are opaque. Do not use `.ultraThinMaterial`. On macOS a material samples the content behind the window. Above a bright desktop, a material makes the dark theme grey.
 
 ### Views
