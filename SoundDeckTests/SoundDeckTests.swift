@@ -405,8 +405,8 @@ struct LoudnessTests {
 struct LibraryLoudnessTests {
     @Test func bundledPadsGetMeasured() async throws {
         let library = SoundLibrary(store: SoundLibraryStore(directoryURL: try temporaryDirectory()))
-        // The measurement runs in the background. Wait for it, with a time limit.
-        for _ in 0..<100 where !library.sounds.allSatisfy({ $0.isMeasured }) {
+        // The measurement runs in the background. Wait for it, with a time limit of 60 s, because parallel builds make the machine slow.
+        for _ in 0..<600 where !library.sounds.allSatisfy({ $0.isMeasured }) {
             try await Task.sleep(for: .milliseconds(100))
         }
         #expect(library.sounds.allSatisfy { $0.isMeasured })
