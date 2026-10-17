@@ -36,6 +36,7 @@ struct DeckArchive: Codable {
         var midiTrigger: MIDITrigger?
         var credit: String?
         var isFavorite: Bool?
+        var output: PadOutput?
         var audio: Data
     }
 
@@ -90,6 +91,7 @@ extension SoundLibrary {
                 midiTrigger: sound.midiTrigger,
                 credit: sound.credit,
                 isFavorite: sound.isFavorite,
+                output: sound.output,
                 audio: audio
             )
         }
@@ -135,6 +137,7 @@ extension SoundLibrary {
             item.midiTrigger = entry.midiTrigger
             item.credit = entry.credit
             item.isFavorite = entry.isFavorite ?? false
+            item.output = entry.output ?? .both
             files[item.id] = entry.audio
             return item
         }

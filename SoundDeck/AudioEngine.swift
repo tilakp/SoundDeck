@@ -13,23 +13,44 @@ import Foundation
 ///
 /// Graph shape, one branch per active voice:
 ///
-///     AVAudioPlayerNode ──▶ AVAudioMixerNode ──▶ mainMixerNode ──▶ limiter ──▶ outputNode
-///                            (per-voice gain,      (master gain)     (peak)      (routable)
-///                             loudness, fade)
+///     AVAudioPlayerNode ──▶ AVAudioMixerNode ──▶ mainMixerNode ──▶ liveBus ──▶ limiter ──▶ outputNode
+///                            (per-voice gain,      (master gain)        ▲          (peak)      (routable)
+///                             loudness, fade)                           │
+///     AVAudioSourceNode (microphone) ──▶ AVAudioMixerNode (mic gain) ───┘
+///
+/// A voice that also plays on the Monitor device gets a second branch in `MonitorOutput`.
+/// The microphone goes only to Live.
 @MainActor
 final class AudioEngine: ObservableObject {
+
+    /// The nodes of one voice in one engine: Live or Monitor.
+    private struct Branch {
+        let engine: AVAudioEngine
+        let player: AVAudioPlayerNode
+        let mixer: AVAudioMixerNode
+        /// The time-pitch node, when the pad changes its pitch or speed.
+        let timePitch: AVAudioUnitTimePitch?
+        /// Each branch reads its own file object. Two engines read on two audio threads.
+        let file: AVAudioFile
+
+        func detach() {
+            engine.detach(player)
+            engine.detach(mixer)
+            if let timePitch { engine.detach(timePitch) }
+        }
+    }
 
     /// One sounding instance. A single `SoundItem` can have several at once.
     private final class Voice {
         let id = UUID()
         let soundID: UUID
-        let player: AVAudioPlayerNode
-        let mixer: AVAudioMixerNode
+        /// One branch for each output. The first branch sets the playhead.
+        let branches: [Branch]
+        /// The branches that did not play to the end. The voice retires at 0.
+        var pendingBranches: Int
         let scopedURL: URL?
         let duration: Double
         let startOffset: Double
-        /// The time-pitch node, when the pad changes its pitch or speed.
-        let timePitch: AVAudioUnitTimePitch?
         /// The gain that moves the pad to the target loudness. The user volume multiplies it.
         let loudnessGain: Float
         var volume: Float
@@ -39,12 +60,10 @@ final class AudioEngine: ObservableObject {
         var envelope: VoiceEnvelope
         var startedAt: TimeInterval
 
-        init(sound: SoundItem, player: AVAudioPlayerNode, mixer: AVAudioMixerNode, timePitch: AVAudioUnitTimePitch?,
-             scopedURL: URL?, duration: Double, startOffset: Double) {
+        init(sound: SoundItem, branches: [Branch], scopedURL: URL?, duration: Double, startOffset: Double) {
             self.soundID = sound.id
-            self.player = player
-            self.mixer = mixer
-            self.timePitch = timePitch
+            self.branches = branches
+            self.pendingBranches = branches.count
             self.scopedURL = scopedURL
             self.duration = duration
             self.startOffset = startOffset
@@ -59,7 +78,8 @@ final class AudioEngine: ObservableObject {
 
         /// A mixer volume above 1 boosts the signal. The limiter catches the peaks of several voices.
         func applyGain() {
-            mixer.outputVolume = volume * loudnessGain * envelope.gain
+            let gain = volume * loudnessGain * envelope.gain
+            for branch in branches { branch.mixer.outputVolume = gain }
         }
     }
 
@@ -69,6 +89,7 @@ final class AudioEngine: ObservableObject {
         case decodeFailed(underlying: Error)
         case engineFailed(underlying: Error)
         case emptyTrim(name: String)
+        case noMonitor(name: String)
 
         var errorDescription: String? {
             switch self {
@@ -82,6 +103,8 @@ final class AudioEngine: ObservableObject {
                 return "Audio engine could not start: \(underlying.localizedDescription)"
             case .emptyTrim(let name):
                 return "The trim of “\(name)” has no length. Open Edit and reset the trim."
+            case .noMonitor(let name):
+                return "“\(name)” plays on Me only, but no Monitor device is available. Set one in Settings, Audio."
             }
         }
     }
@@ -113,6 +136,14 @@ final class AudioEngine: ObservableObject {
     /// `nil` means "follow the system default output".
     @Published private(set) var selectedDeviceUID: String?
 
+    /// The Monitor device and the microphone pass-through. Settings, Audio changes them.
+    @Published private(set) var routing = AudioRoutingSettings()
+    @Published private(set) var inputDevices: [AudioDevice] = []
+    /// True while the microphone goes into the Live output.
+    @Published private(set) var isMicLive = false
+    /// The last error of the microphone pass-through.
+    @Published private(set) var micError: String?
+
     /// The level of the other pads while a pad with `ducksOthers` plays. 0.25 is -12 dB.
     static let duckLevel: Float = 0.25
 
@@ -121,13 +152,16 @@ final class AudioEngine: ObservableObject {
 
     private let engine = AVAudioEngine()
     /// Apple's peak limiter. Several loud voices together do not clip.
-    private let limiter = AVAudioUnitEffect(audioComponentDescription: AudioComponentDescription(
-        componentType: kAudioUnitType_Effect,
-        componentSubType: kAudioUnitSubType_PeakLimiter,
-        componentManufacturer: kAudioUnitManufacturer_Apple,
-        componentFlags: 0,
-        componentFlagsMask: 0
-    ))
+    private let limiter = AudioEngine.makeLimiter()
+    /// Mixes the deck and the microphone before the limiter.
+    private let liveBus = AVAudioMixerNode()
+    private let monitor = MonitorOutput()
+    private let micInput = MicInput()
+    /// The microphone nodes in the deck engine, while the pass-through runs.
+    private var micSource: AVAudioSourceNode?
+    private var micMixer: AVAudioMixerNode?
+    /// The test host keeps the settings of the user and does not open devices.
+    private let usesStoredRouting = !SoundDeckApp.isRunningTests
     private var voices: [UUID: Voice] = [:]
     private var progressTimer: Timer?
     /// Runs while a fade or a duck change runs.
@@ -142,11 +176,25 @@ final class AudioEngine: ObservableObject {
             masterVolume = stored
         }
         engine.mainMixerNode.outputVolume = masterVolume
+        engine.attach(liveBus)
         engine.attach(limiter)
         connectOutputChain()
         selectedDeviceUID = UserDefaults.standard.string(forKey: Self.outputDeviceKey)
+        if usesStoredRouting { routing = AudioRoutingSettings.load(from: .standard) }
+        monitor.volume = routing.monitorVolume
         refreshDevices()
         applyOutputDevice()
+        applyMonitorDevice()
+        if routing.micEnabled { enableMicAfterPermission() }
+
+        monitor.onConfigurationChange = { [weak self] in self?.handleMonitorConfigurationChange() }
+        micInput.onConfigurationChange = { [weak self] in
+            guard let self else { return }
+            print("[DEBUG] Microphone configuration changed")
+            // A change of format stops the input engine. A notice without a stop needs no restart.
+            // Thus a notice that the restart itself causes does not start a loop.
+            self.applyMic(restart: !self.micInput.isRunning)
+        }
 
         // The engine stops when the output device changes or the Mac sleeps.
         // For example, this occurs when AirPods connect. Clear the voices and route again.
@@ -163,8 +211,11 @@ final class AudioEngine: ObservableObject {
         // A device was added or removed, or the system default changed.
         AudioDeviceList.observeChanges { [weak self] in
             MainActor.assumeIsolated {
-                self?.refreshDevices()
-                self?.applyOutputDevice()
+                guard let self else { return }
+                self.refreshDevices()
+                self.applyOutputDevice()
+                self.applyMonitorDevice()
+                self.applyMic()
             }
         }
     }
@@ -174,7 +225,24 @@ final class AudioEngine: ObservableObject {
         // The engine stopped, so its voices cannot continue.
         for voice in Array(voices.values) { retire(voice) }
         refreshDevices()
+        // A new rate on the same device also needs a new connection.
+        engine.stop()
         applyOutputDevice()
+        connectOutputChain()
+        monitor.reset()
+        applyMonitorDevice()
+        applyMic(restart: true)
+    }
+
+    /// The monitor engine stopped. Its voices cannot continue.
+    private func handleMonitorConfigurationChange() {
+        print("[DEBUG] Monitor configuration changed")
+        for voice in Array(voices.values) where voice.branches.contains(where: { $0.engine !== engine }) {
+            retire(voice)
+        }
+        refreshDevices()
+        monitor.reset()
+        applyMonitorDevice()
     }
 
     // MARK: - Playback
@@ -183,6 +251,8 @@ final class AudioEngine: ObservableObject {
         guard let resolution = library.resolve(sound) else {
             throw PlaybackError.unresolved(name: sound.name)
         }
+        let route = OutputRoute.route(for: sound.output, monitorIsActive: monitor.isActive)
+        guard !route.isEmpty else { throw PlaybackError.noMonitor(name: sound.name) }
         let url = resolution.url
         let didAccess = resolution.needsSecurityScope && url.startAccessingSecurityScopedResource()
 
@@ -191,40 +261,30 @@ final class AudioEngine: ObservableObject {
             throw PlaybackError.unreadable(path: url.path)
         }
 
-        let file: AVAudioFile
+        // Each output reads its own file object.
+        var files: [AVAudioFile] = []
         do {
-            file = try AVAudioFile(forReading: url)
+            for _ in 0..<((route.live ? 1 : 0) + (route.monitor ? 1 : 0)) {
+                files.append(try AVAudioFile(forReading: url))
+            }
         } catch {
             if didAccess { url.stopAccessingSecurityScopedResource() }
             throw PlaybackError.decodeFailed(underlying: error)
         }
+        let file = files[0]
 
-        let player = AVAudioPlayerNode()
-        let mixer = AVAudioMixerNode()
-        engine.attach(player)
-        engine.attach(mixer)
-        // Only a pad that changes its pitch or speed gets the time-pitch node.
-        var timePitch: AVAudioUnitTimePitch?
-        if sound.pitch != 0 || sound.speed != 1 {
-            let unit = AVAudioUnitTimePitch()
-            unit.pitch = Float(sound.pitch * 100)
-            unit.rate = Float(sound.speed)
-            engine.attach(unit)
-            engine.connect(player, to: unit, format: file.processingFormat)
-            engine.connect(unit, to: mixer, format: file.processingFormat)
-            timePitch = unit
-        } else {
-            engine.connect(player, to: mixer, format: file.processingFormat)
+        var branches: [Branch] = []
+        if route.live {
+            branches.append(makeBranch(in: engine, file: files.removeFirst(), sound: sound))
         }
-        engine.connect(mixer, to: engine.mainMixerNode, format: file.processingFormat)
-        let detachNodes = { [engine] in
-            engine.detach(player)
-            engine.detach(mixer)
-            if let timePitch { engine.detach(timePitch) }
+        if route.monitor, let monitorEngine = monitor.engine {
+            branches.append(makeBranch(in: monitorEngine, file: files.removeFirst(), sound: sound))
         }
+        let detachNodes = { for branch in branches { branch.detach() } }
 
         do {
-            try startEngineIfNeeded()
+            if route.live { try startEngineIfNeeded() }
+            if route.monitor { try monitor.startIfNeeded() }
         } catch {
             detachNodes()
             if didAccess { url.stopAccessingSecurityScopedResource() }
@@ -254,9 +314,7 @@ final class AudioEngine: ObservableObject {
 
         let voice = Voice(
             sound: sound,
-            player: player,
-            mixer: mixer,
-            timePitch: timePitch,
+            branches: branches,
             scopedURL: didAccess ? url : nil,
             // A faster pad ends sooner. The playhead uses this duration.
             duration: (end - start) / max(0.01, sound.speed),
@@ -264,9 +322,10 @@ final class AudioEngine: ObservableObject {
         )
         voice.applyGain()
 
-        schedule(file: file, on: voice, startFrame: startFrame, frameCount: frameCount, loops: sound.loops)
-
-        player.play()
+        for index in branches.indices {
+            schedule(branch: index, of: voice, startFrame: startFrame, frameCount: frameCount, loops: sound.loops)
+        }
+        startPlayers(of: voice)
         voices[voice.id] = voice
         updateDucking()
         if voice.envelope.isMoving { startEnvelopeTimer() }
@@ -343,11 +402,13 @@ final class AudioEngine: ObservableObject {
 
     /// Re-schedules on completion when looping, so a loop survives arbitrary lengths
     /// without pre-buffering the whole file repeatedly.
-    private func schedule(file: AVAudioFile, on voice: Voice,
+    /// Each branch schedules its own loop, because two devices have two clocks.
+    private func schedule(branch index: Int, of voice: Voice,
                           startFrame: AVAudioFramePosition, frameCount: AVAudioFrameCount,
                           loops: Bool) {
-        voice.player.scheduleSegment(
-            file,
+        let branch = voice.branches[index]
+        branch.player.scheduleSegment(
+            branch.file,
             startingFrame: startFrame,
             frameCount: frameCount,
             at: nil,
@@ -360,14 +421,59 @@ final class AudioEngine: ObservableObject {
             Task { @MainActor in
                 guard let self, let live = self.voices[voice.id] else { return }
                 if loops {
-                    live.startedAt = CACurrentMediaTime()
-                    self.schedule(file: file, on: live, startFrame: startFrame, frameCount: frameCount, loops: true)
+                    if index == 0 { live.startedAt = CACurrentMediaTime() }
+                    self.schedule(branch: index, of: live, startFrame: startFrame, frameCount: frameCount, loops: true)
                 } else {
-                    self.retire(live)
+                    // Wait for the last output, so that no output loses its tail.
+                    live.pendingBranches -= 1
+                    if live.pendingBranches <= 0 { self.retire(live) }
                 }
             }
         }
     }
+
+    /// Makes the nodes of one voice in `engine`. Only a pad that changes its pitch or speed
+    /// gets the time-pitch node.
+    private func makeBranch(in engine: AVAudioEngine, file: AVAudioFile, sound: SoundItem) -> Branch {
+        let player = AVAudioPlayerNode()
+        let mixer = AVAudioMixerNode()
+        engine.attach(player)
+        engine.attach(mixer)
+        let format = file.processingFormat
+        var timePitch: AVAudioUnitTimePitch?
+        if sound.pitch != 0 || sound.speed != 1 {
+            let unit = AVAudioUnitTimePitch()
+            unit.pitch = Float(sound.pitch * 100)
+            unit.rate = Float(sound.speed)
+            engine.attach(unit)
+            engine.connect(player, to: unit, format: format)
+            engine.connect(unit, to: mixer, format: format)
+            timePitch = unit
+        } else {
+            engine.connect(player, to: mixer, format: format)
+        }
+        engine.connect(mixer, to: engine.mainMixerNode, format: format)
+        return Branch(engine: engine, player: player, mixer: mixer, timePitch: timePitch, file: file)
+    }
+
+    /// One branch starts at once. Two branches start at one host time. The output with
+    /// less latency waits for the other, so both outputs sound at the same moment.
+    private func startPlayers(of voice: Voice) {
+        guard voice.branches.count > 1 else {
+            voice.branches.first?.player.play()
+            return
+        }
+        let latencies = voice.branches.map { $0.engine === engine ? engine.outputNode.presentationLatency : monitor.latency }
+        let delays = RoutingMath.startDelays(latencies: latencies)
+        // The lead gives both render threads time to see the start time.
+        let base = mach_absolute_time() + AVAudioTime.hostTime(forSeconds: Self.syncLead)
+        for (branch, delay) in zip(voice.branches, delays) {
+            branch.player.play(at: AVAudioTime(hostTime: base + AVAudioTime.hostTime(forSeconds: delay)))
+        }
+    }
+
+    /// Seconds between the trigger and the start of a voice on two outputs.
+    private static let syncLead = 0.015
 
     /// Stops one sound's voices, or everything when `sound` is nil.
     func stop(_ sound: SoundItem? = nil, fade: Bool = true) {
@@ -451,10 +557,10 @@ final class AudioEngine: ObservableObject {
     }
 
     private func retire(_ voice: Voice) {
-        voice.player.stop()
-        engine.detach(voice.player)
-        engine.detach(voice.mixer)
-        if let timePitch = voice.timePitch { engine.detach(timePitch) }
+        for branch in voice.branches {
+            branch.player.stop()
+            branch.detach()
+        }
         voice.scopedURL?.stopAccessingSecurityScopedResource()
         voices.removeValue(forKey: voice.id)
 
@@ -470,9 +576,16 @@ final class AudioEngine: ObservableObject {
             playhead.padProgress = [:]
             waveform = nil
             focusedSoundID = nil
-            // Idling the engine releases the output device so other apps can change it.
-            engine.pause()
+            pauseIfIdle()
         }
+    }
+
+    /// Idling the engines releases the output devices so other apps can change them.
+    /// The microphone keeps the deck engine running.
+    private func pauseIfIdle() {
+        guard voices.isEmpty else { return }
+        if micSource == nil { engine.pause() }
+        monitor.pause()
     }
 
     private func startEngineIfNeeded() throws {
@@ -545,6 +658,7 @@ final class AudioEngine: ObservableObject {
 
     func refreshDevices() {
         outputDevices = AudioDeviceList.outputDevices()
+        inputDevices = AudioDeviceList.inputDevices()
     }
 
     /// Passing nil returns the deck to the system default output.
@@ -584,21 +698,46 @@ final class AudioEngine: ObservableObject {
         }
         connectOutputChain()
         print("[DEBUG] Output device is \(target)")
+        // The microphone keeps the engine running.
+        if micSource != nil { try? startEngineIfNeeded() }
     }
 
-    /// Connects the main mixer to the limiter, and the limiter to the output, at the rate of
-    /// the device. A new device can have another sample rate or channel count. The output
-    /// unit maps stereo to the first two channels of the device.
+    /// Connects the main mixer and the microphone to the live bus, and the bus through the
+    /// limiter to the output.
     private func connectOutputChain() {
+        guard let format = Self.connectChain(of: engine, from: liveBus, through: limiter) else { return }
+        engine.connect(engine.mainMixerNode, to: liveBus, fromBus: 0, toBus: 0, format: format)
+        if let micMixer {
+            engine.connect(micMixer, to: liveBus, fromBus: 0, toBus: 1, format: format)
+        }
+    }
+
+    /// Connects `source` to `limiter`, and the limiter to the output, at the rate of the
+    /// device. A new device can have another sample rate or channel count. The output unit
+    /// maps stereo to the first two channels of the device. Gives the format.
+    @discardableResult
+    static func connectChain(of engine: AVAudioEngine, from source: AVAudioNode,
+                             through limiter: AVAudioUnitEffect) -> AVAudioFormat? {
         let hardware = engine.outputNode.outputFormat(forBus: 0)
         guard hardware.sampleRate > 0,
               let format = AVAudioFormat(standardFormatWithSampleRate: hardware.sampleRate,
-                                         channels: min(2, max(1, hardware.channelCount))) else { return }
-        engine.connect(engine.mainMixerNode, to: limiter, format: format)
+                                         channels: min(2, max(1, hardware.channelCount))) else { return nil }
+        engine.connect(source, to: limiter, format: format)
         engine.connect(limiter, to: engine.outputNode, format: format)
+        return format
     }
 
-    private static func currentDevice(of audioUnit: AudioUnit) -> AudioDeviceID? {
+    static func makeLimiter() -> AVAudioUnitEffect {
+        AVAudioUnitEffect(audioComponentDescription: AudioComponentDescription(
+            componentType: kAudioUnitType_Effect,
+            componentSubType: kAudioUnitSubType_PeakLimiter,
+            componentManufacturer: kAudioUnitManufacturer_Apple,
+            componentFlags: 0,
+            componentFlagsMask: 0
+        ))
+    }
+
+    static func currentDevice(of audioUnit: AudioUnit) -> AudioDeviceID? {
         var device = AudioDeviceID(0)
         var size = UInt32(MemoryLayout<AudioDeviceID>.size)
         let status = AudioUnitGetProperty(audioUnit, kAudioOutputUnitProperty_CurrentDevice, kAudioUnitScope_Global, 0, &device, &size)
@@ -611,6 +750,159 @@ final class AudioEngine: ObservableObject {
             return "System Default"
         }
         return device.name
+    }
+
+    // MARK: - Monitor
+
+    /// Nil turns the monitor off.
+    func selectMonitorDevice(uid: String?) {
+        routing.monitorDeviceUID = uid
+        saveRouting()
+        applyMonitorDevice()
+    }
+
+    func setMonitorVolume(_ volume: Float) {
+        routing.monitorVolume = volume
+        monitor.volume = volume
+        saveRouting()
+    }
+
+    /// True when the monitor device is selected and present.
+    var isMonitorActive: Bool { monitor.isActive }
+
+    /// Routes the monitor to the selected device. A missing device turns the monitor off
+    /// until the device returns. It does not use the system default, because that can be the call device.
+    private func applyMonitorDevice() {
+        let target = routing.monitorDeviceUID.flatMap { uid in outputDevices.first { $0.uid == uid }?.id }
+        if routing.monitorDeviceUID != nil, target == nil {
+            print("[DEBUG] The monitor device is missing; the monitor is off")
+        }
+        monitor.route(to: target) {
+            // The device can only change while the monitor engine is stopped.
+            for voice in Array(voices.values) where voice.branches.contains(where: { $0.engine !== engine }) {
+                retire(voice)
+            }
+        }
+        objectWillChange.send()
+    }
+
+    // MARK: - Microphone pass-through
+
+    func setMicEnabled(_ enabled: Bool) {
+        routing.micEnabled = enabled
+        saveRouting()
+        if enabled {
+            enableMicAfterPermission()
+        } else {
+            applyMic()
+        }
+    }
+
+    /// Nil uses the system default input.
+    func selectMicDevice(uid: String?) {
+        routing.micDeviceUID = uid
+        saveRouting()
+        applyMic()
+    }
+
+    func setMicGain(decibels: Double) {
+        routing.micGainDecibels = decibels
+        micMixer?.outputVolume = routing.micLinearGain
+        saveRouting()
+    }
+
+    func setMicMuted(_ muted: Bool) {
+        routing.micMuted = muted
+        micMixer?.outputVolume = routing.micLinearGain
+        saveRouting()
+    }
+
+    private func enableMicAfterPermission() {
+        guard usesStoredRouting else { return }
+        Task { @MainActor in
+            let granted = await AVCaptureDevice.requestAccess(for: .audio)
+            guard granted else {
+                self.micError = Recorder.RecorderError.permissionDenied.localizedDescription
+                self.routing.micEnabled = false
+                self.saveRouting()
+                return
+            }
+            self.applyMic()
+        }
+    }
+
+    /// Starts, moves or stops the pass-through, as the settings say. `restart` starts it
+    /// again on the same device, for example after a device change.
+    private func applyMic(restart: Bool = false) {
+        guard routing.micEnabled, usesStoredRouting,
+              AVCaptureDevice.authorizationStatus(for: .audio) == .authorized else {
+            stopMic()
+            return
+        }
+        let selected = routing.micDeviceUID.flatMap { uid in inputDevices.first { $0.uid == uid }?.id }
+        guard let device = selected ?? AudioDeviceList.defaultInputDevice() else {
+            stopMic()
+            micError = MicInput.MicError.noInput.localizedDescription
+            return
+        }
+        if !restart, micSource != nil, micInput.isRunning, micInput.deviceID == device { return }
+        stopMic()
+        do {
+            try micInput.start(device: device)
+            guard let buffer = micInput.buffer,
+                  let format = AVAudioFormat(standardFormatWithSampleRate: micInput.sampleRate, channels: 1) else {
+                throw MicInput.MicError.noInput
+            }
+            let source = Self.makeMicSource(reading: buffer, format: format)
+            let mixer = AVAudioMixerNode()
+            engine.attach(source)
+            engine.attach(mixer)
+            // The mixer converts the rate of the microphone to the rate of the output.
+            engine.connect(source, to: mixer, format: format)
+            mixer.outputVolume = routing.micLinearGain
+            micSource = source
+            micMixer = mixer
+            connectOutputChain()
+            try startEngineIfNeeded()
+            isMicLive = true
+            micError = nil
+        } catch {
+            print("[DEBUG] Microphone pass-through failed: \(error)")
+            stopMic()
+            micError = error.localizedDescription
+        }
+    }
+
+    private func stopMic() {
+        micInput.stop()
+        if let micSource { engine.detach(micSource) }
+        if let micMixer { engine.detach(micMixer) }
+        micSource = nil
+        micMixer = nil
+        isMicLive = false
+        pauseIfIdle()
+    }
+
+    /// The render block runs on the audio thread. It reads only the queue.
+    nonisolated private static func makeMicSource(reading buffer: MicRingBuffer, format: AVAudioFormat) -> AVAudioSourceNode {
+        AVAudioSourceNode(format: format) { _, _, frameCount, bufferList in
+            let buffers = UnsafeMutableAudioBufferListPointer(bufferList)
+            for audio in buffers {
+                guard let data = audio.mData else { continue }
+                buffer.read(into: data.assumingMemoryBound(to: Float.self), count: Int(frameCount))
+            }
+            return noErr
+        }
+    }
+
+    private func saveRouting() {
+        guard usesStoredRouting else { return }
+        routing.save(to: .standard)
+    }
+
+    var monitorDeviceName: String {
+        guard let uid = routing.monitorDeviceUID else { return "None" }
+        return outputDevices.first(where: { $0.uid == uid })?.name ?? "Missing device"
     }
 }
 

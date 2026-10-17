@@ -249,6 +249,12 @@ struct ContentView: View {
             Section("All Outputs") {
                 ForEach(engine.outputDevices) { device in deviceButton(device) }
             }
+            if engine.routing.micEnabled {
+                Divider()
+                Toggle("Mute Microphone", isOn: Binding(
+                    get: { engine.routing.micMuted },
+                    set: { engine.setMicMuted($0) }))
+            }
             Divider()
             Button("Refresh Devices") { engine.refreshDevices() }
         } label: {

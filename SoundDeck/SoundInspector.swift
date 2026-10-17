@@ -26,6 +26,7 @@ struct SoundInspector: View {
     @State private var fadeOut = SoundItem.defaultFadeOut
     @State private var pitch = 0.0
     @State private var speed = 1.0
+    @State private var output: PadOutput = .both
     @State private var tint: SoundTint = .none
     @State private var emoji: String = ""
     @State private var hotKey: String = ""
@@ -166,6 +167,10 @@ struct SoundInspector: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
+            GridRow(alignment: .center) {
+                rowLabel("Output")
+                outputPicker
+            }
             GridRow(alignment: .top) {
                 Color.clear.gridCellUnsizedAxes([.horizontal, .vertical])
                 DisclosureGroup("Shape", isExpanded: $showsShape) {
@@ -251,6 +256,20 @@ struct SoundInspector: View {
         .pickerStyle(.segmented)
         .labelsHidden()
         .help("Play over: each press adds a sound. Restart: plays from the start. Toggle: the next press stops it. Hold: plays while you hold the key.")
+    }
+
+    private var outputPicker: some View {
+        Picker("Output", selection: $output) {
+            ForEach(PadOutput.allCases) { option in Text(option.label).tag(option) }
+        }
+        .pickerStyle(.segmented)
+        .labelsHidden()
+        .controlSize(.small)
+        .fixedSize()
+        .disabled(!engine.isMonitorActive)
+        .help(engine.isMonitorActive
+              ? "Live is the deck output. Me only plays on the Monitor device, so the call does not hear it."
+              : "Set a Monitor device in Settings, Audio. Then a pad can play on Live, Me only or Both.")
     }
 
     private var otherPadsRow: some View {
@@ -342,6 +361,7 @@ struct SoundInspector: View {
         fadeOut = sound.fadeOut
         pitch = sound.pitch
         speed = sound.speed
+        output = sound.output
         tint = sound.tint
         emoji = sound.emoji ?? ""
         hotKey = sound.hotKey ?? ""
@@ -414,6 +434,7 @@ struct SoundInspector: View {
         item.fadeOut = fadeOut
         item.pitch = pitch
         item.speed = speed
+        item.output = output
     }
 
     /// Gives true if one of the shape values is not at its default.
