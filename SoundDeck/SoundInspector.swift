@@ -250,7 +250,7 @@ struct SoundInspector: View {
                 .fill(option.color)
                 .frame(width: 18, height: 18)
                 .overlay(
-                    Circle().strokeBorder(.white.opacity(tint == option ? 0.9 : 0), lineWidth: 2)
+                    Circle().strokeBorder(Theme.textPrimary.opacity(tint == option ? 1 : 0), lineWidth: 2)
                 )
         }
         .buttonStyle(.plain)

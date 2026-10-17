@@ -50,7 +50,7 @@ struct SoundTile: View {
             .clipShape(RoundedRectangle(cornerRadius: Theme.tileRadius, style: .continuous))
             .overlay(border)
             .overlay(focusRing)
-            .shadow(color: isPlaying ? tint.opacity(0.30) : .black.opacity(0.22),
+            .shadow(color: isPlaying ? tint.opacity(0.30) : Theme.shadow,
                     radius: isPlaying ? 10 : 6, y: 3)
             .scaleEffect(pressed ? 0.96 : 1)
         }
@@ -143,7 +143,7 @@ struct SoundTile: View {
                         .font(Theme.Font.caption(.bold))
                         .foregroundStyle(Theme.textPrimary)
                         .padding(Theme.Spacing.xs)
-                        .background(Circle().fill(Color.white.opacity(0.14)))
+                        .background(Circle().fill(Theme.fillStrong))
                 }
                 .buttonStyle(.plain)
                 .help("Stop")
@@ -301,11 +301,11 @@ private struct PadKeyCap: View {
             .padding(.horizontal, Theme.Spacing.xs)
             .background(
                 RoundedRectangle(cornerRadius: Theme.Radius.small, style: .continuous)
-                    .fill(Color.white.opacity(0.09))
+                    .fill(Theme.fill)
             )
             .overlay(
                 RoundedRectangle(cornerRadius: Theme.Radius.small, style: .continuous)
-                    .strokeBorder(Color.white.opacity(0.13), lineWidth: 1)
+                    .strokeBorder(Theme.fillStroke, lineWidth: 1)
             )
             .accessibilityHidden(true)
     }

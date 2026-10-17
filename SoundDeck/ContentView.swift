@@ -937,7 +937,5 @@ private struct ShortcutList: View {
             }
         }
         .padding(Theme.Spacing.l)
-        // The text colours are for a dark surface. This sets the popover only, not the window.
-        .preferredColorScheme(.dark)
     }
 }

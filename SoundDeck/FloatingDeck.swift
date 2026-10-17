@@ -86,8 +86,7 @@ final class FloatingDeck: NSObject, NSWindowDelegate {
         // A panel hides when its app is not active. This panel must stay over the meeting app.
         panel.hidesOnDeactivate = false
         panel.isReleasedWhenClosed = false
-        panel.appearance = NSAppearance(named: .darkAqua)
-        panel.backgroundColor = NSColor(Theme.surface)
+        panel.backgroundColor = Theme.surfaceColor
         panel.contentMinSize = Self.minimumSize
         panel.delegate = self
         panel.contentView = FirstMouseHostingView(rootView: FloatingDeckView(library: library, engine: engine))
