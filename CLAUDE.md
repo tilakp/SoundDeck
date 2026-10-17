@@ -160,6 +160,8 @@ A pad with a choke group stops the other pads in its group. While a pad with `du
 
 A pad that changes its pitch or speed gets an `AVAudioUnitTimePitch` between the player and the voice mixer. Other pads do not get this node.
 
+A pad with an EQ that is not flat gets one `AVAudioUnitEQ` in each branch. The chain is player, time-pitch, EQ, voice mixer. A flat EQ gets no node. The loudness measurement does not include the EQ. A change to the EQ applies at the next trigger.
+
 A failed play goes to `recordFailure`. It fills `lastError` and `padErrors`. The views mark a failed pad in place. A live show gets no modal alert.
 
 The map `Playhead.padProgress` holds the progress of each playing pad. Only small subviews observe it. Do not observe `Playhead` in a tile or in the grid. If you do, the grid draws again 30 times each second.
