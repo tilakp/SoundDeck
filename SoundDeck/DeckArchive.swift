@@ -33,6 +33,7 @@ struct DeckArchive: Codable {
         var fadeOut: Double?
         var pitch: Double?
         var speed: Double?
+        var credit: String?
         var audio: Data
     }
 
@@ -84,6 +85,7 @@ extension SoundLibrary {
                 fadeOut: sound.fadeOut,
                 pitch: sound.pitch,
                 speed: sound.speed,
+                credit: sound.credit,
                 audio: audio
             )
         }
@@ -126,6 +128,7 @@ extension SoundLibrary {
             item.fadeOut = entry.fadeOut ?? SoundItem.defaultFadeOut
             item.pitch = entry.pitch ?? 0
             item.speed = entry.speed ?? 1
+            item.credit = entry.credit
             files[item.id] = entry.audio
             return item
         }

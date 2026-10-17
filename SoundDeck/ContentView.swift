@@ -13,6 +13,7 @@ struct ContentView: View {
     @State private var isDropTargeted = false
     @State private var inspecting: SoundItem?
     @State private var recording = false
+    @State private var searchingFreesound = false
     @State private var renamingDeckID: UUID?
     @State private var deckName = ""
     @State private var deletingDeck: Deck?
@@ -74,6 +75,9 @@ struct ContentView: View {
         }
         .sheet(isPresented: $recording) {
             RecorderSheet(library: library) { recording = false }
+        }
+        .sheet(isPresented: $searchingFreesound) {
+            FreesoundSheet(library: library) { searchingFreesound = false }
         }
         .alert("Rename Deck", isPresented: Binding(
             get: { renamingDeckID != nil },
@@ -152,6 +156,7 @@ struct ContentView: View {
             Button("Add Files…") { showingFileImporter = true }
             Button("Record…") { recording = true }
             Divider()
+            Button("Freesound…") { searchingFreesound = true }
         } label: {
             HStack(spacing: Theme.Spacing.s) {
                 Image(systemName: "plus")

@@ -107,6 +107,9 @@ struct SoundItem: Identifiable, Codable, Equatable {
     /// Playback rate, from 0.5 to 2.
     var speed: Double
 
+    /// The attribution text for a sound with a Creative Commons license, for example from Freesound.
+    var credit: String?
+
     static let defaultFadeOut = 0.12
 
     /// The gain that `matchesLoudness` adds. The user volume multiplies it.
@@ -158,6 +161,7 @@ struct SoundItem: Identifiable, Codable, Equatable {
         self.fadeOut = Self.defaultFadeOut
         self.pitch = 0
         self.speed = 1
+        self.credit = nil
     }
 
     // Every added field is decoded leniently. Libraries written by earlier builds must
@@ -189,6 +193,7 @@ struct SoundItem: Identifiable, Codable, Equatable {
         fadeOut = try c.decodeIfPresent(Double.self, forKey: .fadeOut) ?? Self.defaultFadeOut
         pitch = try c.decodeIfPresent(Double.self, forKey: .pitch) ?? 0
         speed = try c.decodeIfPresent(Double.self, forKey: .speed) ?? 1
+        credit = try c.decodeIfPresent(String.self, forKey: .credit)
     }
 
     /// Initial for the button badge when no emoji is set.
