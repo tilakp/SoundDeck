@@ -30,6 +30,8 @@ final class AudioEngine: ObservableObject {
         let mixer: AVAudioMixerNode
         /// The time-pitch node, when the pad changes its pitch or speed.
         let timePitch: AVAudioUnitTimePitch?
+        /// The EQ node, when the pad has an EQ that is not flat.
+        let eq: AVAudioUnitEQ?
         /// Each branch reads its own file object. Two engines read on two audio threads.
         let file: AVAudioFile
 
@@ -37,6 +39,7 @@ final class AudioEngine: ObservableObject {
             engine.detach(player)
             engine.detach(mixer)
             if let timePitch { engine.detach(timePitch) }
+            if let eq { engine.detach(eq) }
         }
     }
 
@@ -433,27 +436,38 @@ final class AudioEngine: ObservableObject {
     }
 
     /// Makes the nodes of one voice in `engine`. Only a pad that changes its pitch or speed
-    /// gets the time-pitch node.
+    /// gets the time-pitch node. Only a pad with an EQ that is not flat gets the EQ node.
+    ///
+    /// The chain is: player, time-pitch, EQ, voice mixer.
     private func makeBranch(in engine: AVAudioEngine, file: AVAudioFile, sound: SoundItem) -> Branch {
         let player = AVAudioPlayerNode()
         let mixer = AVAudioMixerNode()
         engine.attach(player)
         engine.attach(mixer)
         let format = file.processingFormat
+        var chain: [AVAudioNode] = [player]
         var timePitch: AVAudioUnitTimePitch?
         if sound.pitch != 0 || sound.speed != 1 {
             let unit = AVAudioUnitTimePitch()
             unit.pitch = Float(sound.pitch * 100)
             unit.rate = Float(sound.speed)
             engine.attach(unit)
-            engine.connect(player, to: unit, format: format)
-            engine.connect(unit, to: mixer, format: format)
+            chain.append(unit)
             timePitch = unit
-        } else {
-            engine.connect(player, to: mixer, format: format)
+        }
+        var eqUnit: AVAudioUnitEQ?
+        if let eq = PadEQ.effective(sound.eq) {
+            let unit = eq.makeUnit()
+            engine.attach(unit)
+            chain.append(unit)
+            eqUnit = unit
+        }
+        chain.append(mixer)
+        for (source, destination) in zip(chain, chain.dropFirst()) {
+            engine.connect(source, to: destination, format: format)
         }
         engine.connect(mixer, to: engine.mainMixerNode, format: format)
-        return Branch(engine: engine, player: player, mixer: mixer, timePitch: timePitch, file: file)
+        return Branch(engine: engine, player: player, mixer: mixer, timePitch: timePitch, eq: eqUnit, file: file)
     }
 
     /// One branch starts at once. Two branches start at one host time. The output with

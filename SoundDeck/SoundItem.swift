@@ -114,6 +114,8 @@ struct SoundItem: Identifiable, Codable, Equatable {
     var speed: Double
     /// The outputs of the pad when a Monitor device is set.
     var output: PadOutput
+    /// The three-band EQ. Nil or a flat EQ means no EQ.
+    var eq: PadEQ?
 
     /// The attribution text for a sound with a Creative Commons license, for example from Freesound.
     var credit: String?
@@ -173,6 +175,7 @@ struct SoundItem: Identifiable, Codable, Equatable {
         self.speed = 1
         self.credit = nil
         self.output = .both
+        self.eq = nil
     }
 
     // Every added field is decoded leniently. Libraries written by earlier builds must
@@ -210,6 +213,7 @@ struct SoundItem: Identifiable, Codable, Equatable {
         speed = try c.decodeIfPresent(Double.self, forKey: .speed) ?? 1
         credit = try c.decodeIfPresent(String.self, forKey: .credit)
         output = (try? c.decodeIfPresent(PadOutput.self, forKey: .output)) ?? .both
+        eq = (try? c.decodeIfPresent(PadEQ.self, forKey: .eq)) ?? nil
     }
 
     /// Initial for the button badge when no emoji is set.
