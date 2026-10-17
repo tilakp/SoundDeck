@@ -19,7 +19,7 @@ Obey these rules:
 
 ## Project
 
-Sound Deck is a soundboard for macOS. It uses SwiftUI. It has a grid of pads that play audio files. It has global hotkeys, a menu bar deck and a selectable output device.
+Sound Deck is a soundboard for macOS. It uses SwiftUI. It has decks of pads that play audio files. It has global hotkeys, a menu bar deck, a floating deck and a selectable output device. Other apps and devices control it through a URL scheme, Shortcuts, OSC, MIDI, a web remote, Twitch chat and a Stream Deck plugin.
 
 The value of `PRODUCT_BUNDLE_IDENTIFIER` is `com.patelt.SoundDeck`.
 
@@ -37,7 +37,7 @@ To build the application, type the command that follows. This command builds the
 xcodebuild -project SoundDeck.xcodeproj -scheme SoundDeck -configuration Debug build
 ```
 
-To run all tests, type the command that follows. The target `SoundDeckTests` tests the store, the library, the decks and the deck files. The UI test target contains only empty examples.
+To run all tests, type the command that follows. The target `SoundDeckTests` has more than 200 tests. Each area has its own test file. The UI test target contains only empty examples.
 
 ```bash
 xcodebuild -project SoundDeck.xcodeproj -scheme SoundDeck -destination 'platform=macOS' test
@@ -65,6 +65,12 @@ To see debug output, run the binary directly. Do not use Xcode.
 ```
 
 The function `SoundDeckApp.init` calls `setvbuf(stdout, nil, _IONBF, 0)`. The function `print` uses block buffering when stdout is a pipe. Without this call, a script launch loses all output.
+
+When the app hosts the unit tests, `SoundDeckApp.isRunningTests` is true. The app then uses a temporary library. It starts no remote controls, no global hotkeys and no floating deck. Do not remove this check. Without it, a test run changes the deck of the user.
+
+The test host opens its own window. Before you capture a window for a UI check, find the window by the process ID of your own app.
+
+When several builds run at the same time, give each one its own `-derivedDataPath`.
 
 ## Signing and the sandbox
 
@@ -100,11 +106,13 @@ The decoder reads each new field with `decodeIfPresent`. A strict decoder reject
 
 A deck is a named list of pads. The keys 1 to 0 and the global hotkeys play the pads of the active deck only. Each deck has its own keys.
 
+A deck shows a grid or a cue list. `Deck.layout` holds the choice. A locked deck (`isLocked`) refuses changes. `Deck` has an explicit `CodingKeys` list, because `cueIndex` is runtime state that the file does not keep. Add each new stored field to that list. If you do not, the field is not saved.
+
 ### SoundLibraryStore.swift
 
 This file writes JSON to `~/Library/Application Support/SoundDeck/library.json`. The write is atomic.
 
-Version 2 of the file holds the decks and the active deck. The store reads a version 1 file as one deck with the name "Main". The directory `Sounds/` holds the copied audio files. Tests give the store a temporary directory.
+Version 2 of the file holds the decks and the active deck. The store reads a version 1 file as one deck with the name "Main". In version 3, pad names have no file extension. The library removes the extension one time from each name that the user did not change. The file also holds the Recent list. The directory `Sounds/` holds the copied audio files. Tests give the store a temporary directory.
 
 Do not use `UserDefaults`. `UserDefaults` is a preferences store. A change to the sandbox status replaces the container. An earlier build lost its library for this reason.
 
@@ -121,6 +129,10 @@ The property `sounds` gives the pads of the active deck. The function `sound(wit
 When you remove a pad or a deck, the library deletes the copied files.
 
 The function `resolve()` saves a refreshed bookmark when macOS reports a stale bookmark.
+
+A locked deck refuses changes to its pads and to the deck. The guards are in `SoundLibrary`, so every path obeys them. A favorite mark is the only change that a locked deck accepts.
+
+A search and the smart decks Favorites and Recent show pads from all decks. These views are read-only. The keys always use `activeDeckID`. The library records the last 20 played pads. It observes `AudioEngine.lastPlayedID` with Combine.
 
 ### AudioEngine.swift
 
@@ -148,6 +160,18 @@ A pad with a choke group stops the other pads in its group. While a pad with `du
 
 A pad that changes its pitch or speed gets an `AVAudioUnitTimePitch` between the player and the voice mixer. Other pads do not get this node.
 
+A failed play goes to `recordFailure`. It fills `lastError` and `padErrors`. The views mark a failed pad in place. A live show gets no modal alert.
+
+The map `Playhead.padProgress` holds the progress of each playing pad. Only small subviews observe it. Do not observe `Playhead` in a tile or in the grid. If you do, the grid draws again 30 times each second.
+
+### AudioRouting.swift, MonitorOutput.swift and MicPassThrough.swift
+
+A voice can play on two outputs. Live is the deck output. Monitor is a second device, for example headphones. `MonitorOutput` has its own engine. A voice gets a monitor branch only when its pad plays on the monitor. The pad field `output` selects Both, Live or Me only.
+
+The two branches start at one host time. The faster output waits for the slower output. The voice retires after the last branch ends. Long loops on two devices can drift, because the device clocks are not locked. A missing monitor turns the monitor off. It does not fall back to the system default, because that can be the call device.
+
+The microphone pass-through uses a separate input engine and `MicRingBuffer`. An `AVAudioSourceNode` reads the queue into the Live bus, before the limiter. The microphone does not go to the monitor. While the microphone is on, the deck engine does not pause.
+
 ### VoiceEnvelope.swift
 
 This file holds the fade and duck state of one voice. It is a pure value, so the tests can step it. One engine timer steps all envelopes about 100 times each second, only while a fade or a duck change runs. The voice gain is the user volume times the loudness gain times the envelope gain.
@@ -160,6 +184,8 @@ The function `gain` moves a pad to -18 LUFS. The boost is not more than +12 dB, 
 
 ### DeckArchive.swift
 
+When you add a field to `SoundItem`, add it to `DeckArchive.Entry` as an optional too. If you do not, export loses the setting.
+
 This file exports a deck to one `.sounddeck` file and imports it. The file is JSON. It holds the settings and the Base64 audio of each pad. An import gives each pad a new id. It keeps each copy in the directory of its pad, also when the file name has `..` in it.
 
 ### Recorder.swift
@@ -167,6 +193,16 @@ This file exports a deck to one `.sounddeck` file and imports it. The file is JS
 This file records from the default input device to an AAC file. It has its own `AVAudioEngine`. A mixer converts the input to mono or stereo. The main mixer is muted, so the microphone does not go to the speakers.
 
 The build setting `INFOPLIST_KEY_NSMicrophoneUsageDescription` holds the text of the permission prompt. Without it, macOS stops the application when it asks for the microphone.
+
+After the stop, the Record sheet shows the recording in a `TrimTrack`. "Add to Deck" saves the trim as `trimStart` and `trimEnd`. The file stays complete. The type `RecordingTrim` holds the pure trim and time functions. Space starts and stops the recording, except when the name field has focus.
+
+### SpeechPad.swift and SpeechPadSheet.swift
+
+The sheet makes a pad that speaks a phrase. It uses the system voices, which work offline. `SpeechRenderer` writes the PCM buffers of `AVSpeechSynthesizer.write` to a CAF file. An empty buffer ends the stream. The library then moves the file in with `addRecording(at:name:)`.
+
+### FreesoundClient.swift and FreesoundSheet.swift
+
+These files search freesound.org with token authentication. The API key is in the keychain. Do not use `UserDefaults` for the key. Token authentication cannot download the original file. Therefore a pad gets the HQ preview, a 128 kbps MP3. Each pad from Freesound keeps a credit in `SoundItem.credit`. CC BY sounds need this credit.
 
 ### AudioDevice.swift
 
@@ -190,17 +226,67 @@ The modifiers are ⌃⌥. VoiceOver uses ⌃⌥ for its own commands. While Voic
 
 This file registers the global hotkeys of the active deck. It registers again only when the keys change, or when VoiceOver starts or stops. The application owns the binder, not the window. Thus the keys also change when the window is closed.
 
+### DeckCommands.swift
+
+This file is the one entry point for all remote controls. A query finds a pad by id, name, key or name prefix, in the active deck first. Each command triggers through the engine, so the play mode, the choke group and ducking apply. Do not add lookup logic to a remote control. Use `DeckCommands.shared`.
+
+### DeckURL.swift, AppDelegate.swift and SoundDeckIntents.swift
+
+`DeckURL` reads `sounddeck://` URLs. `AppDelegate` receives them through a `kAEGetURL` handler. Do not use `onOpenURL`, because it can open a new window. SwiftUI allows only one `NSApplicationDelegateAdaptor`. Add app delegate work to `AppDelegate`.
+
+The file `Config/SoundDeck-Info.plist` registers the scheme. Xcode merges it into the generated plist. Keep this file outside `SoundDeck/`. If it is inside, the synced folder copies it as a resource.
+
+The intents in `SoundDeckIntents.swift` give Shortcuts the actions Play Pad, Stop Pad, Stop All Pads and Select Deck.
+
+### OSCServer.swift and OSCMessage.swift
+
+The server receives OSC messages on UDP with `NWListener`. It is off by default. The default port is 9000. `OSCMessage.swift` holds a pure parser and the command mapping. A malformed packet gives no messages. A float 1 on `/sounddeck/play/<pad>` triggers, and a float 0 releases.
+
+### WebRemoteServer.swift and WebRemotePage.swift
+
+The server sends the web remote page with `NWListener`. It is off by default. The default port is 8787. Each API call must send the pairing code in the header `X-Pairing-Code`. After 10 incorrect codes in one minute, the API returns 429. The parser and the router are pure functions. The traffic is plain HTTP on the local network.
+
+### TwitchChat.swift
+
+This file reads the chat of one Twitch channel. The connection is anonymous: the nick is `justinfan<number>`. The command `!sound <pad>` plays a pad. The pure type `ChatTriggerGate` applies the allowed pads and the cooldowns. A rejected message does not start a cooldown. The app never releases a pad from chat. Therefore a Hold pad plays to its end. Channel point rewards need a Twitch developer app and OAuth. The app does not do them.
+
+### MIDIControl.swift and MIDIMessage.swift
+
+This file connects to all MIDI sources with CoreMIDI and the MIDI 1.0 protocol. A setup change connects all sources again. The receive block parses UMP words on the CoreMIDI thread and sends the messages to the main actor. `MIDIMessage.swift` holds the pure parser and matcher. A CC is down at 64 or more. The matcher acts only when a CC crosses 64. If two pads have the same mapping, both play.
+
+### FloatingDeck.swift
+
+This file holds a floating panel with the pads. The panel uses `.nonactivatingPanel`. Therefore a click on a pad does not activate the app, and the meeting app keeps the focus. The hosting view accepts the first mouse click. Keep `hidesOnDeactivate` false. If it is true, the panel hides while another app is active.
+
+### CueList.swift and CueListView.swift
+
+The cue list plays the pads of a deck in order. `Deck.cueIndex` holds the standby cue. The value `sounds.count` means End. The Go key is the period key, only in List layout. Keep the Go logic in `CueList`, because the tests use it.
+
+### StreamDeckPlugin/
+
+This folder is a Node.js project for the Elgato Stream Deck. It is not in the Xcode project. It uses the `sounddeck://` URLs. If you change the URL forms in `DeckURL.swift`, change `StreamDeckPlugin/src/deck-url.ts` also. To test the plugin, type `npm test` in that folder.
+
 ### Theme.swift
 
-This file holds the palette, the chrome and the motion values.
+This file holds the palette, the chrome, the motion values and the design tokens. `Theme.Font` gives four type sizes: caption 11, body 13, title 15 and numeral 20. Pad names and key caps use the rounded design. `Theme.Radius` gives small 6, control 8 and container 12. `Theme.Spacing` gives 4, 8, 12, 16 and 24. Do not add literal sizes in views. Use a token.
 
 The surfaces are opaque. Do not use `.ultraThinMaterial`. On macOS a material samples the content behind the window. Above a bright desktop, a material makes the dark theme grey.
 
 ### Views
 
-The views are `ContentView`, `SoundTile`, `SoundInspector`, `RecorderSheet` and `MenuBarDeck`.
+The main views are `ContentView`, `SoundTile`, `SoundInspector`, `MenuBarDeck`, `MiniPadGrid` and `SettingsView`.
 
-The deck bar in `ContentView` shows the decks, the menu for new and imported decks, and the Record button. The context menu of a deck has Rename, Export and Delete.
+The main window shows no alert for a playback error. The monitor strip shows the error for 4 seconds. The type `TransientNotice` controls this period. Only import and export show an alert. Stop All is at the right of the monitor strip.
+
+The Add button is a menu: Add Files, Record, Speech Pad and Freesound. The context menu of a deck has Rename, Export, Lock and Delete. Command-F focuses the search field.
+
+Space always stops all sounds, also when a pad has focus. Return plays the focused pad, or plays the last pad again when no pad has focus.
+
+The inspector puts the settings in a two-column grid. Fades, pitch and speed are in the closed "Shape" section. `KeyRecorderField` records the hotkey. The pure rules are in `KeyRecording`. The permitted characters must agree with `GlobalHotKeys.keyCode(for:)`.
+
+`MiniPadGrid` shows a compact grid of the pads of the active deck. The menu bar deck and the floating deck use it. A Hold pad plays on mouse down and stops on mouse up. "Settings…" in the menu bar uses `openSettings` after `NSApp.activate`, because `SettingsLink` can open Settings behind the front app.
+
+The Settings window has one tab for each integration. Each tab is in its own file.
 
 The type `SoundDeckApp` owns `SoundLibrary` and `AudioEngine`. Therefore the window and the menu bar use the same deck.
 

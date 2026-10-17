@@ -25,20 +25,38 @@ Sound Deck is a soundboard for macOS. Add your audio files to the deck. Press a 
 - You can change the pitch and the speed of each sound.
 - You can trim a sound to a shorter section.
 - You can set a sound to loop.
+- Each sound has a three-band EQ.
+- A pad shows its progress while it plays. A pad that fails shows a red mark. The window never shows an alert during a show.
 - The deck shows a waveform and a playhead during playback.
 
 ### Triggers
 
 - Each pad has a keyboard key. Press the key to play the pad.
-- Global hotkeys work in all applications. Press Control-Option and the key of the pad.
-- The menu bar icon opens a compact deck. You do not have to open the main window.
-- Press Space to stop all sounds. Press Return to play the last sound again.
+- Global hotkeys work in all applications. Press Control-Option and the key of the pad. While VoiceOver is on, press Control-Option-Command.
+- The menu bar icon opens a compact grid of pads. A red Stop bar shows while a sound plays.
+- Press Command-Option-F to show the floating deck. It stays above your meeting app. A click on a pad does not move the focus away from the meeting app.
+- Press Space to stop all sounds. Press Return to play the focused pad, or the last sound again.
+- Press Tab or an arrow key to move the focus between pads.
+- Select List above the pads to use a cue list. Press the period key to play the next cue.
+
+### Control from other apps and devices
+
+- **URLs:** `sounddeck://play/<pad>`, `sounddeck://release/<pad>`, `sounddeck://stop`, `sounddeck://stop/<pad>` and `sounddeck://deck/<deck>`. Percent-encode spaces.
+- **Shortcuts:** the actions Play Pad, Stop Pad, Stop All Pads and Select Deck.
+- **MIDI:** turn on MIDI in Settings > MIDI. In the settings of a pad, click Learn and press a pad on your controller.
+- **OSC:** turn on OSC in Settings > OSC. Send `/sounddeck/play "<pad>"` to port 9000. `/sounddeck/stop` stops all pads, and `/sounddeck/deck "<name>"` selects a deck.
+- **Web remote:** turn it on in Settings > Web Remote. Scan the QR code with a phone on the same network.
+- **Twitch chat:** turn it on in Settings > Twitch and type your channel name. Viewers type `!sound <pad>` to play a pad.
+- **Stream Deck:** the folder `StreamDeckPlugin/` holds a plugin. Read `StreamDeckPlugin/README.md` to build and install it.
 
 ### Output
 
 - You can select the output device.
 - Select a virtual device to send the audio to a call or to a stream.
 - The device menu shows virtual devices in a separate group.
+- Select your headphones as the Monitor device to hear the deck yourself.
+- Each pad plays on Both outputs, on Live only, or on Me only. Use Me only to try a sound that the call does not hear.
+- The deck can mix your microphone into its output.
 
 ### Library
 
@@ -51,7 +69,11 @@ Sound Deck is a soundboard for macOS. Add your audio files to the deck. Press a 
 - You can move a pad to another deck.
 - The deck keeps a copy of each file that you add. If you move or delete the original file, the pad still plays.
 - You can export a deck to one `.sounddeck` file and import it on another Mac.
-- You can record a new pad from your microphone.
+- You can record a new pad from your microphone. Trim the silence before you add it.
+- You can make a pad that speaks a phrase. Select Add > Speech Pad.
+- You can find sounds on freesound.org. Select Add > Freesound. Paste a free API key in Settings > Freesound first. The sheet copies the credits for the deck.
+- You can mark a pad as a favorite. The Favorites and Recent chips show pads from all decks. A search finds pads in all decks.
+- You can lock a deck to prevent changes.
 
 ## Send the audio to a call
 
@@ -66,12 +88,13 @@ The call now receives the audio from the deck. The call does not receive your vo
 
 To send your voice and the deck audio together, do the steps that follow.
 
-1. Open Audio MIDI Setup.
-2. Create an aggregate device.
-3. Add your microphone and the virtual device to the aggregate device.
-4. Set the microphone of the call to the aggregate device.
+1. Open **Settings › Audio**.
+2. Turn on **Mix my microphone into the deck output**. Allow the microphone access.
+3. In the call app, select only the virtual device as the microphone.
 
-To play sounds without leaving the call window, enable global hotkeys. Click the menu bar icon. Set **Global hotkeys** to on. Press Control-Option and the key of a pad.
+You do not need an aggregate device. To hear the deck yourself, select your headphones as the **Monitor** device in the same tab.
+
+To play sounds without leaving the call window, press Command-Option-F to show the floating deck. You can also turn on global hotkeys in **Settings › General**. Then press Control-Option and the key of a pad.
 
 ## Install
 
