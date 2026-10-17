@@ -83,6 +83,8 @@ struct SoundItem: Identifiable, Codable, Equatable {
     var hotKey: String?
     /// The MIDI note or controller that plays this pad. Nil means no mapping.
     var midiTrigger: MIDITrigger?
+    /// A note for the cue list, for example "After the intro". Nil means no note.
+    var note: String?
 
     // MARK: Loudness
     /// Integrated loudness in LUFS. Nil before the measurement and for a silent file.
@@ -188,6 +190,7 @@ struct SoundItem: Identifiable, Codable, Equatable {
         hotKey = try c.decodeIfPresent(String.self, forKey: .hotKey)
         // A mapping from a newer build is not an error. The pad gets no mapping.
         midiTrigger = (try? c.decodeIfPresent(MIDITrigger.self, forKey: .midiTrigger)) ?? nil
+        note = try c.decodeIfPresent(String.self, forKey: .note)
         measuredLoudness = try c.decodeIfPresent(Double.self, forKey: .measuredLoudness)
         measuredPeak = try c.decodeIfPresent(Float.self, forKey: .measuredPeak)
         matchesLoudness = try c.decodeIfPresent(Bool.self, forKey: .matchesLoudness) ?? true
