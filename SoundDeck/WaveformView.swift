@@ -31,7 +31,7 @@ struct WaveformView: View {
                     // Floor keeps silent passages visible as a hairline rather than gaps.
                     let height = max(2, amplitude * size.height)
                     Capsule()
-                        .fill(index < playedCount ? tint : Color.white.opacity(0.16))
+                        .fill(index < playedCount ? tint : Theme.strokeStrong)
                         .frame(width: barWidth, height: height)
                 }
             }
@@ -68,7 +68,7 @@ struct WaveformPlaceholder: View {
                     let seeded = sin(Double(index) * 0.7) * cos(Double(index) * 0.23)
                     let height = 2 + abs(seeded) * 10
                     Capsule()
-                        .fill(Color.white.opacity(0.07))
+                        .fill(Theme.stroke)
                         .frame(width: 2.5, height: height)
                 }
             }

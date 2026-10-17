@@ -31,10 +31,10 @@ struct TrimTrack: View {
 
                 // Dim everything outside the selection.
                 Rectangle()
-                    .fill(.black.opacity(0.55))
+                    .fill(Theme.dim)
                     .frame(width: max(0, startX))
                 Rectangle()
-                    .fill(.black.opacity(0.55))
+                    .fill(Theme.dim)
                     .frame(width: max(0, width - endX))
                     .offset(x: endX)
 
