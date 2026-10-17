@@ -30,6 +30,8 @@ struct SoundDeckApp: App {
         _library = StateObject(wrappedValue: library)
         _engine = StateObject(wrappedValue: engine)
         _hotKeys = StateObject(wrappedValue: HotKeyBinder.live(library: library, engine: engine))
+        // Recent lists each pad that plays, from every play path.
+        library.followPlays(of: engine)
         DeckCommands.shared = DeckCommands(library: library, engine: engine)
         let floatingDeck = FloatingDeck(library: library, engine: engine)
         FloatingDeck.shared = floatingDeck

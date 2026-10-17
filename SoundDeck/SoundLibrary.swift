@@ -1,3 +1,4 @@
+import Combine
 import Foundation
 
 enum SoundImportError: LocalizedError {
@@ -15,17 +16,57 @@ enum SoundImportError: LocalizedError {
     }
 }
 
+/// A locked deck refuses a change.
+enum DeckLockError: LocalizedError, Equatable {
+    case locked(deck: String)
+
+    var errorDescription: String? {
+        switch self {
+        case .locked(let deck): return "The deck “\(deck)” is locked. Unlock it to make changes."
+        }
+    }
+}
+
+/// A deck that the library makes from the pads of all decks. It is read-only.
+enum SmartDeck: String, CaseIterable, Identifiable {
+    case favorites, recent
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .favorites: return "Favorites"
+        case .recent: return "Recent"
+        }
+    }
+
+    var symbol: String {
+        switch self {
+        case .favorites: return "star.fill"
+        case .recent: return "clock"
+        }
+    }
+}
+
 /// Owns the decks: what's in them, their order, and their per-sound settings.
 @MainActor
 final class SoundLibrary: ObservableObject {
     @Published private(set) var decks: [Deck] = []
     @Published private(set) var activeDeckID = UUID()
     @Published var searchText: String = ""
+    /// The smart deck that the grid shows, or nil for the active deck.
+    /// The keys and the global hotkeys always use `activeDeckID`, the last real deck.
+    @Published private(set) var smartDeck: SmartDeck?
+    /// The ids of the pads that played last, the most recent first.
+    @Published private(set) var recentIDs: [UUID] = []
+
+    nonisolated static let recentLimit = 20
 
     private let store: SoundLibraryStore
     private let fileManager = FileManager.default
     /// The pads that a background measurement has now. This prevents a second measurement.
     private var measuring: Set<UUID> = []
+    private var playObserver: AnyCancellable?
 
     /// The pads of the active deck.
     private(set) var sounds: [SoundItem] {
@@ -44,6 +85,7 @@ final class SoundLibrary: ObservableObject {
         if let loaded = store.load() {
             decks = loaded.decks
             activeDeckID = loaded.activeDeckID
+            recentIDs = loaded.recentIDs
             if loaded.version < 3 { removeExtensionsFromNames() }
             replaceMissingBundledSounds()
             copyOldImports()
@@ -89,10 +131,82 @@ final class SoundLibrary: ObservableObject {
         if changed { save() }
     }
 
+    /// The pads that the grid shows. A search finds pads in all decks. A smart deck shows
+    /// pads from all decks. Else the grid shows the active deck.
     var filteredSounds: [SoundItem] {
-        let query = searchText.trimmingCharacters(in: .whitespaces)
-        guard !query.isEmpty else { return sounds }
-        return sounds.filter { $0.name.localizedCaseInsensitiveContains(query) }
+        if isSearching { return Self.search(searchText, in: decks, activeDeckID: activeDeckID) }
+        switch smartDeck {
+        case .favorites: return Self.favorites(in: decks)
+        case .recent: return recentIDs.compactMap(sound(withID:))
+        case nil: return sounds
+        }
+    }
+
+    var isSearching: Bool { !searchText.trimmingCharacters(in: .whitespaces).isEmpty }
+
+    /// True when the grid shows pads from more than one deck. Such a view is read-only.
+    var showsAllDecks: Bool { isSearching || smartDeck != nil }
+
+    /// The pads whose names contain `query`, from all decks. The pads of the active deck come first.
+    static func search(_ query: String, in decks: [Deck], activeDeckID: UUID) -> [SoundItem] {
+        let text = query.trimmingCharacters(in: .whitespaces)
+        guard !text.isEmpty else { return [] }
+        let ordered = decks.filter { $0.id == activeDeckID } + decks.filter { $0.id != activeDeckID }
+        return ordered.flatMap(\.sounds).filter { $0.name.localizedCaseInsensitiveContains(text) }
+    }
+
+    /// The favorite pads of all decks, in deck order.
+    static func favorites(in decks: [Deck]) -> [SoundItem] {
+        decks.flatMap(\.sounds).filter(\.isFavorite)
+    }
+
+    /// Puts `id` first in `recent`. It removes an earlier entry of the same id and keeps `limit` ids.
+    static func noting(_ id: UUID, in recent: [UUID], limit: Int = recentLimit) -> [UUID] {
+        Array(([id] + recent.filter { $0 != id }).prefix(limit))
+    }
+
+    /// Records a pad that played. Recent shows it first.
+    func noteDidPlay(_ id: UUID) {
+        let updated = Self.noting(id, in: recentIDs)
+        guard updated != recentIDs else { return }
+        recentIDs = updated
+        save()
+    }
+
+    /// Records each successful play of the engine. `AudioEngine.play` sets `lastPlayedID`
+    /// only after the voice starts. Thus every play path counts: keys, menus and remote controls.
+    func followPlays(of engine: AudioEngine) {
+        playObserver = engine.$lastPlayedID
+            .compactMap { $0 }
+            .sink { [weak self] id in
+                MainActor.assumeIsolated { self?.noteDidPlay(id) }
+            }
+    }
+
+    /// Shows a smart deck. The active deck does not change, so the keys still play its pads.
+    func selectSmartDeck(_ smart: SmartDeck) {
+        smartDeck = smart
+    }
+
+    /// The name of the deck that holds a pad.
+    func deckName(of id: UUID) -> String? {
+        locate(id).map { decks[$0.deck].name }
+    }
+
+    /// True when the deck that holds the pad is locked.
+    func isLocked(_ sound: SoundItem) -> Bool {
+        locate(sound.id).map { decks[$0.deck].isLocked } ?? false
+    }
+
+    /// The decks that can receive the pad: not its own deck and not a locked deck.
+    func moveTargets(for sound: SoundItem) -> [(id: UUID, name: String)] {
+        let own = locate(sound.id).map { decks[$0.deck].id }
+        return decks.filter { $0.id != own && !$0.isLocked }.map { (id: $0.id, name: $0.name) }
+    }
+
+    /// Throws when the active deck is locked. An import goes into the active deck.
+    private func checkActiveDeckUnlocked() throws {
+        if activeDeck.isLocked { throw DeckLockError.locked(deck: activeDeck.name) }
     }
 
     /// Finds a sound in any deck. A sound in another deck can still play.
@@ -114,6 +228,7 @@ final class SoundLibrary: ObservableObject {
     /// Copies the file into the library. Thus a moved or deleted original does not break the pad.
     @discardableResult
     func addSound(url: URL) throws -> SoundItem {
+        try checkActiveDeckUnlocked()
         let fileName = url.lastPathComponent
         if sounds.contains(where: { !$0.isBundled && $0.fileName == fileName }) {
             throw SoundImportError.duplicate(name: fileName)
@@ -129,6 +244,8 @@ final class SoundLibrary: ObservableObject {
         }
         item.hotKey = Self.nextAvailableHotKey(in: sounds)
         sounds.append(item)
+        // The new pad goes into the active deck. Show that deck, not a smart deck.
+        smartDeck = nil
         save()
         measureMissingLoudness()
         return item
@@ -137,6 +254,8 @@ final class SoundLibrary: ObservableObject {
     /// Imports several files, returning whatever went wrong so the caller can report
     /// partial failure rather than aborting the whole drop.
     func addSounds(urls: [URL]) -> [Error] {
+        // One error for a locked deck, not one for each file.
+        do { try checkActiveDeckUnlocked() } catch { return [error] }
         var failures: [Error] = []
         for url in urls {
             do { try addSound(url: url) } catch { failures.append(error) }
@@ -147,6 +266,7 @@ final class SoundLibrary: ObservableObject {
     /// Moves a recorded file into the library and adds a pad for it to the active deck.
     @discardableResult
     func addRecording(at url: URL, name: String) throws -> SoundItem {
+        try checkActiveDeckUnlocked()
         var item = SoundItem(copiedFileName: url.lastPathComponent)
         item.name = name
         do {
@@ -156,27 +276,34 @@ final class SoundLibrary: ObservableObject {
         }
         item.hotKey = Self.nextAvailableHotKey(in: sounds)
         sounds.append(item)
+        smartDeck = nil
         save()
         measureMissingLoudness()
         return item
     }
 
-    func remove(_ sound: SoundItem) {
-        guard let location = locate(sound.id) else { return }
+    /// Returns false when the deck of the pad is locked.
+    @discardableResult
+    func remove(_ sound: SoundItem) -> Bool {
+        guard let location = locate(sound.id), !decks[location.deck].isLocked else { return false }
         let item = decks[location.deck].sounds.remove(at: location.sound)
         deleteCopy(of: item)
+        recentIDs.removeAll { $0 == item.id }
         save()
+        return true
     }
 
     func move(fromOffsets offsets: IndexSet, toOffset destination: Int) {
+        guard !activeDeck.isLocked, !showsAllDecks else { return }
         sounds.move(fromOffsets: offsets, toOffset: destination)
         save()
     }
 
     /// Reorders by id. An id survives filtering. An index-based move does not
     /// survive filtering when a search is active.
+    /// A view of all decks has no order of its own, so it does not reorder.
     func move(id: UUID, before targetID: UUID) {
-        guard id != targetID,
+        guard id != targetID, !activeDeck.isLocked, !showsAllDecks,
               let from = sounds.firstIndex(where: { $0.id == id }),
               let to = sounds.firstIndex(where: { $0.id == targetID }) else { return }
         let item = sounds.remove(at: from)
@@ -185,9 +312,17 @@ final class SoundLibrary: ObservableObject {
         save()
     }
 
-    func update(_ sound: SoundItem, _ mutate: (inout SoundItem) -> Void) {
-        guard let (deck, index) = locate(sound.id) else { return }
-        mutate(&decks[deck].sounds[index])
+    /// Changes a pad. A locked deck accepts only a change to `isFavorite`, because a
+    /// favorite is a mark for the user and not a change to the deck. Returns false when the deck refuses.
+    @discardableResult
+    func update(_ sound: SoundItem, _ mutate: (inout SoundItem) -> Void) -> Bool {
+        guard let (deck, index) = locate(sound.id) else { return false }
+        var changed = decks[deck].sounds[index]
+        mutate(&changed)
+        if decks[deck].isLocked {
+            guard Self.differsOnlyInFavorite(changed, decks[deck].sounds[index]) else { return false }
+        }
+        decks[deck].sounds[index] = changed
         // A hotkey can trigger only one pad. Remove the key from the other pads.
         if let key = decks[deck].sounds[index].hotKey?.lowercased() {
             for other in decks[deck].sounds.indices
@@ -196,12 +331,20 @@ final class SoundLibrary: ObservableObject {
             }
         }
         save()
+        return true
     }
 
-    func rename(_ sound: SoundItem, to newName: String) {
+    private static func differsOnlyInFavorite(_ changed: SoundItem, _ original: SoundItem) -> Bool {
+        var other = changed
+        other.isFavorite = original.isFavorite
+        return other == original
+    }
+
+    @discardableResult
+    func rename(_ sound: SoundItem, to newName: String) -> Bool {
         let trimmed = newName.trimmingCharacters(in: .whitespaces)
-        guard !trimmed.isEmpty else { return }
-        update(sound) { $0.name = trimmed }
+        guard !trimmed.isEmpty else { return false }
+        return update(sound) { $0.name = trimmed }
     }
 
     func sound(forHotKey key: String) -> SoundItem? {
@@ -250,36 +393,58 @@ final class SoundLibrary: ObservableObject {
         measureMissingLoudness()
     }
 
+    /// Makes a deck active. It also leaves a smart deck.
     func selectDeck(_ id: UUID) {
-        guard id != activeDeckID, decks.contains(where: { $0.id == id }) else { return }
+        guard decks.contains(where: { $0.id == id }) else { return }
+        smartDeck = nil
+        guard id != activeDeckID else { return }
         activeDeckID = id
         save()
     }
 
-    func renameDeck(_ id: UUID, to newName: String) {
+    @discardableResult
+    func renameDeck(_ id: UUID, to newName: String) -> Bool {
         let trimmed = newName.trimmingCharacters(in: .whitespaces)
-        guard !trimmed.isEmpty, let index = decks.firstIndex(where: { $0.id == id }) else { return }
+        guard !trimmed.isEmpty, let index = decks.firstIndex(where: { $0.id == id }),
+              !decks[index].isLocked else { return false }
         decks[index].name = trimmed
+        save()
+        return true
+    }
+
+    /// Locks or unlocks a deck. This is the only change that a locked deck accepts.
+    func setLocked(_ id: UUID, _ locked: Bool) {
+        guard let index = decks.firstIndex(where: { $0.id == id }), decks[index].isLocked != locked else { return }
+        decks[index].isLocked = locked
         save()
     }
 
-    /// Removes a deck and the copies of its sounds. The last deck cannot be removed.
-    func removeDeck(_ id: UUID) {
-        guard decks.count > 1, let index = decks.firstIndex(where: { $0.id == id }) else { return }
+    /// Removes a deck and the copies of its sounds. The last deck and a locked deck cannot be removed.
+    @discardableResult
+    func removeDeck(_ id: UUID) -> Bool {
+        guard decks.count > 1, let index = decks.firstIndex(where: { $0.id == id }),
+              !decks[index].isLocked else { return false }
         let removed = decks.remove(at: index)
         removed.sounds.forEach(deleteCopy)
+        let removedIDs = Set(removed.sounds.map(\.id))
+        recentIDs.removeAll { removedIDs.contains($0) }
         if activeDeckID == id { activeDeckID = decks[0].id }
         save()
+        return true
     }
 
     /// Moves a pad to the end of another deck. The pad gets a free key in that deck.
-    func moveSound(_ sound: SoundItem, toDeck id: UUID) {
+    /// Returns false when one of the two decks is locked.
+    @discardableResult
+    func moveSound(_ sound: SoundItem, toDeck id: UUID) -> Bool {
         guard let (deck, index) = locate(sound.id),
-              let target = decks.firstIndex(where: { $0.id == id }), target != deck else { return }
+              let target = decks.firstIndex(where: { $0.id == id }), target != deck,
+              !decks[deck].isLocked, !decks[target].isLocked else { return false }
         var item = decks[deck].sounds.remove(at: index)
         item.hotKey = Self.nextAvailableHotKey(in: decks[target].sounds)
         decks[target].sounds.append(item)
         save()
+        return true
     }
 
     /// Adds " 2", " 3" and so on when another deck has the same name.
@@ -408,7 +573,9 @@ final class SoundLibrary: ObservableObject {
 
     // MARK: - Persistence
 
-    func save() { store.save(SoundLibraryStore.State(decks: decks, activeDeckID: activeDeckID)) }
+    func save() {
+        store.save(SoundLibraryStore.State(decks: decks, activeDeckID: activeDeckID, recentIDs: recentIDs))
+    }
 
     /// The order of the bundled sounds on a new deck. It is the same as the web demo.
     /// A bundled file that is not in this list goes after these files, in name order.

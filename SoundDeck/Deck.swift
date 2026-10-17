@@ -8,18 +8,21 @@ struct Deck: Identifiable, Codable, Equatable {
     var sounds: [SoundItem]
     /// How the window shows the pads of this deck.
     var layout: DeckLayout = .grid
+    /// A locked deck refuses changes to its pads and to the deck. Its pads still play.
+    var isLocked: Bool
     /// The standby cue of the cue list. The value `sounds.count` means "End".
     /// This is runtime state. The library file does not keep it.
     var cueIndex = 0
 
     private enum CodingKeys: String, CodingKey {
-        case id, name, sounds, layout
+        case id, name, sounds, layout, isLocked
     }
 
-    init(name: String, sounds: [SoundItem] = []) {
+    init(name: String, sounds: [SoundItem] = [], isLocked: Bool = false) {
         self.id = UUID()
         self.name = name
         self.sounds = sounds
+        self.isLocked = isLocked
     }
 
     // Decode leniently, as `SoundItem` does.
@@ -30,6 +33,7 @@ struct Deck: Identifiable, Codable, Equatable {
         sounds = (try c.decodeIfPresent([Lossy<SoundItem>].self, forKey: .sounds) ?? []).compactMap(\.value)
         // A layout from a newer build is not an error. The deck shows the grid.
         layout = (try? c.decodeIfPresent(DeckLayout.self, forKey: .layout)) ?? .grid
+        isLocked = try c.decodeIfPresent(Bool.self, forKey: .isLocked) ?? false
     }
 }
 

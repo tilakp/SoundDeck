@@ -85,6 +85,8 @@ struct SoundItem: Identifiable, Codable, Equatable {
     var midiTrigger: MIDITrigger?
     /// A note for the cue list, for example "After the intro". Nil means no note.
     var note: String?
+    /// The pad shows in the Favorites smart deck.
+    var isFavorite: Bool
 
     // MARK: Loudness
     /// Integrated loudness in LUFS. Nil before the measurement and for a silent file.
@@ -156,6 +158,7 @@ struct SoundItem: Identifiable, Codable, Equatable {
         self.emoji = nil
         self.hotKey = nil
         self.midiTrigger = nil
+        self.isFavorite = false
         self.measuredLoudness = nil
         self.measuredPeak = nil
         self.matchesLoudness = true
@@ -191,6 +194,7 @@ struct SoundItem: Identifiable, Codable, Equatable {
         // A mapping from a newer build is not an error. The pad gets no mapping.
         midiTrigger = (try? c.decodeIfPresent(MIDITrigger.self, forKey: .midiTrigger)) ?? nil
         note = try c.decodeIfPresent(String.self, forKey: .note)
+        isFavorite = try c.decodeIfPresent(Bool.self, forKey: .isFavorite) ?? false
         measuredLoudness = try c.decodeIfPresent(Double.self, forKey: .measuredLoudness)
         measuredPeak = try c.decodeIfPresent(Float.self, forKey: .measuredPeak)
         matchesLoudness = try c.decodeIfPresent(Bool.self, forKey: .matchesLoudness) ?? true
