@@ -37,6 +37,7 @@ struct DeckArchive: Codable {
         var credit: String?
         var isFavorite: Bool?
         var output: PadOutput?
+        var eq: PadEQ?
         var audio: Data
     }
 
@@ -92,6 +93,7 @@ extension SoundLibrary {
                 credit: sound.credit,
                 isFavorite: sound.isFavorite,
                 output: sound.output,
+                eq: sound.eq,
                 audio: audio
             )
         }
@@ -138,6 +140,7 @@ extension SoundLibrary {
             item.credit = entry.credit
             item.isFavorite = entry.isFavorite ?? false
             item.output = entry.output ?? .both
+            item.eq = entry.eq
             files[item.id] = entry.audio
             return item
         }

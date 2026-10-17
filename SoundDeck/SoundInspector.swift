@@ -32,6 +32,8 @@ struct SoundInspector: View {
     @State private var hotKey: String = ""
     @State private var midiTrigger: MIDITrigger?
     @State private var showsShape = false
+    @State private var eq = PadEQ()
+    @State private var showsEQ = false
 
     @State private var samples: [Float]?
     @State private var duration: Double = 0
@@ -179,6 +181,14 @@ struct SoundInspector: View {
                 .font(Theme.Font.body())
                 .foregroundStyle(Theme.textSecondary)
             }
+            GridRow(alignment: .top) {
+                Color.clear.gridCellUnsizedAxes([.horizontal, .vertical])
+                DisclosureGroup("EQ", isExpanded: $showsEQ) {
+                    eqSliders.padding(.top, Theme.Spacing.s)
+                }
+                .font(Theme.Font.body())
+                .foregroundStyle(Theme.textSecondary)
+            }
         }
     }
 
@@ -314,6 +324,46 @@ struct SoundInspector: View {
         }
     }
 
+    private var eqSliders: some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.s) {
+            labeledSlider("Low", value: $eq.low, in: PadEQ.gainRange, step: 1, text: gainText(eq.low))
+            labeledSlider("Mid", value: $eq.mid, in: PadEQ.gainRange, step: 1, text: gainText(eq.mid))
+            labeledSlider("Freq", value: midFrequencyPosition, in: 0...1, text: frequencyText(eq.midFrequency))
+            labeledSlider("High", value: $eq.high, in: PadEQ.gainRange, step: 1, text: gainText(eq.high))
+            HStack {
+                Text("Low 120 Hz, high 8 kHz. Match loudness measures the file without the EQ.")
+                    .font(Theme.Font.caption())
+                    .foregroundStyle(Theme.textTertiary)
+                    .fixedSize(horizontal: false, vertical: true)
+                Spacer()
+                Button("Flat") {
+                    eq.low = 0
+                    eq.mid = 0
+                    eq.high = 0
+                }
+                .controlSize(.small)
+                .disabled(eq.isFlat)
+                .help("Set the three bands to 0 dB.")
+            }
+        }
+    }
+
+    /// The frequency slider uses a log scale, so each octave has the same width.
+    private var midFrequencyPosition: Binding<Double> {
+        Binding(
+            get: { PadEQ.position(forMidFrequency: eq.midFrequency) },
+            set: { eq.midFrequency = PadEQ.midFrequency(atPosition: $0) }
+        )
+    }
+
+    private func gainText(_ gain: Double) -> String {
+        String(format: "%+.0f dB", gain)
+    }
+
+    private func frequencyText(_ frequency: Double) -> String {
+        frequency >= 1000 ? String(format: "%.1f kHz", frequency / 1000) : String(format: "%.0f Hz", frequency)
+    }
+
     private func labeledSlider(_ title: String, value: Binding<Double>, in range: ClosedRange<Double>,
                                step: Double? = nil, text: String) -> some View {
         HStack(spacing: Theme.Spacing.s) {
@@ -366,6 +416,8 @@ struct SoundInspector: View {
         emoji = sound.emoji ?? ""
         hotKey = sound.hotKey ?? ""
         midiTrigger = sound.midiTrigger
+        eq = sound.eq ?? PadEQ()
+        showsEQ = !eq.isFlat
         showsShape = Self.hasCustomShape(fadeIn: fadeIn, fadeOut: fadeOut, pitch: pitch, speed: speed)
 
         guard let resolution = library.resolve(sound) else { return }
@@ -435,6 +487,7 @@ struct SoundInspector: View {
         item.pitch = pitch
         item.speed = speed
         item.output = output
+        item.eq = PadEQ.effective(eq)
     }
 
     /// Gives true if one of the shape values is not at its default.
