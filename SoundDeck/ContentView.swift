@@ -813,15 +813,35 @@ struct KeyboardHandler: NSViewRepresentable {
         var onRelease: ((String) -> Void)?
         var onGo: (() -> Void)?
         private var monitor: Any?
+        private var keyObserver: NSObjectProtocol?
 
         override func viewDidMoveToWindow() {
             super.viewDidMoveToWindow()
             if let monitor { NSEvent.removeMonitor(monitor) }
             monitor = nil
-            guard window != nil else { return }
+            if let keyObserver { NotificationCenter.default.removeObserver(keyObserver) }
+            keyObserver = nil
+            guard let window else { return }
             monitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .keyUp]) { [weak self] event in
                 guard let self, event.window === self.window, self.handle(event) else { return event }
                 return nil
+            }
+            // When the window first becomes key, AppKit gives the focus to the first text field.
+            // That is the search field, so the pad keys type into it. Remove that focus one time.
+            if window.isKeyWindow {
+                clearInitialFocus()
+            } else {
+                keyObserver = NotificationCenter.default.addObserver(
+                    forName: NSWindow.didBecomeKeyNotification, object: window, queue: .main
+                ) { [weak self] _ in self?.clearInitialFocus() }
+            }
+        }
+
+        private func clearInitialFocus() {
+            if let keyObserver { NotificationCenter.default.removeObserver(keyObserver) }
+            keyObserver = nil
+            DispatchQueue.main.async { [weak window] in
+                if window?.firstResponder is NSTextView { window?.makeFirstResponder(nil) }
             }
         }
 
