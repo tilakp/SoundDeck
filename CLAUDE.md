@@ -112,7 +112,7 @@ A deck shows a grid or a cue list. `Deck.layout` holds the choice. A locked deck
 
 This file writes JSON to `~/Library/Application Support/SoundDeck/library.json`. The write is atomic.
 
-Version 2 of the file holds the decks and the active deck. The store reads a version 1 file as one deck with the name "Main". In version 3, pad names have no file extension. The library removes the extension one time from each name that the user did not change. The file also holds the Recent list. The directory `Sounds/` holds the copied audio files. Tests give the store a temporary directory.
+Version 2 of the file holds the decks and the active deck. The store reads a version 1 file as one deck with the name "Main". In version 3, pad names have no file extension. The library removes the extension one time from each name that the user did not change. In version 4, the library adds the meeting sounds one time to the end of each deck that has a bundled pad and is not locked. The list is `SoundLibrary.meetingSounds`. In version 5, the library clears the loudness of the pads in `SoundLibrary.rerecordedSounds`. A pad keeps its measurement, so a new file with the same name needs this step. The file also holds the Recent list. The directory `Sounds/` holds the copied audio files. Tests give the store a temporary directory.
 
 Do not use `UserDefaults`. `UserDefaults` is a preferences store. A change to the sandbox status replaces the container. An earlier build lost its library for this reason.
 
@@ -316,7 +316,9 @@ The asset catalog uses a second copy of the 32 pixel file with the name `icon_32
 
 ## Bundled sounds
 
-A script creates the nine files in `sounds/`. The page `Tools/MakeSounds.html` holds a copy of the Web Audio synthesis of the demo on quietpixel.dev. The script opens this page in headless Chrome and writes 16-bit mono WAV files.
+The directory `sounds/` holds 16 files. Nine files are trimmed CC0 recordings. The section "Credits" in `README.md` gives their sources. Only add a CC0 file. Do not put a text file in `sounds/`, because the synced folder copies it into the app.
+
+A script creates the other seven files in `sounds/`. It also writes `Applause.wav` and `Ba-dum-tss.wav`. Do not copy these two files, because the recordings replace them. The page `Tools/MakeSounds.html` holds a copy of the Web Audio synthesis of the demo on quietpixel.dev. The script opens this page in headless Chrome and writes 16-bit mono WAV files.
 
 To create the sound files, type the commands that follow.
 

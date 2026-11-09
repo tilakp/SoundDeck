@@ -13,8 +13,9 @@ final class SoundLibraryStore {
     /// Bumped when the on-disk shape changes in a way `SoundItem`'s lenient decoding
     /// cannot absorb on its own.
     /// Version 1 has one list of sounds. Version 2 has decks. In version 3, pad names
-    /// have no file extension.
-    static let currentVersion = 3
+    /// have no file extension. Version 4 adds the meeting sounds to the decks that have bundled pads.
+    /// In version 5, two bundled files are recordings, so their pads need a new loudness measurement.
+    static let currentVersion = 5
 
     /// The decks and the active deck, as the store reads and writes them.
     struct State: Equatable {

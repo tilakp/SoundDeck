@@ -144,7 +144,20 @@ The application tries a security-scoped bookmark first. It uses a plain bookmark
 
 - Built with SwiftUI, AVFoundation and CoreAudio
 - The script `Tools/MakeIcon.swift` creates the application icon
-- The script `Tools/MakeSounds.mjs` creates the nine bundled sounds. It uses the Web Audio synthesis of the [quietpixel.dev](https://quietpixel.dev) demo
+- The script `Tools/MakeSounds.mjs` creates seven bundled sounds. It uses the Web Audio synthesis of the [quietpixel.dev](https://quietpixel.dev) demo
+- Nine bundled sounds are trimmed copies of CC0 (public domain) recordings. No credit is necessary, but we give it:
+
+| File | Source | Author |
+|---|---|---|
+| `Ba-dum-tss.wav` | [Battery joke #1](https://bigsoundbank.com/battery-joke-s0433.html) | Joseph Sardin, BigSoundBank |
+| `Applause.wav` | [Applause about 25-50 people #1](https://bigsoundbank.com/applause-about-25-50-people-1-s0812.html) | Joseph Sardin, BigSoundBank |
+| `Crickets.wav` | [Field cricket](https://bigsoundbank.com/field-cricket-s1020.html) | Joseph Sardin, BigSoundBank |
+| `Drum roll.wav` | [Drum roll 1 M](https://bigsoundbank.com/drum-roll-1-m-s2401.html) | Joseph Sardin, BigSoundBank |
+| `Cheer.wav` | [Shouts and Applauses of Teens #2](https://bigsoundbank.com/shouts-and-applauses-of-teens-2-s0237.html) | Joseph Sardin, BigSoundBank |
+| `Ticking clock.wav` | [Clock](https://bigsoundbank.com/clock-s0007.html) | Joseph Sardin, BigSoundBank |
+| `Alarm.wav` | [Mechanical alarm clock, short ring](https://bigsoundbank.com/mechanical-alarm-clock-short-ring-s1373.html) | Joseph Sardin, BigSoundBank |
+| `Quack.wav` | [Ducks](https://bigsoundbank.com/ducks-s0276.html) | Joseph Sardin, BigSoundBank |
+| `Ta-da.wav` | `jingles_STEEL10.ogg` from [Music Jingles](https://kenney.nl/assets/music-jingles) | Kenney |
 
 ## License
 

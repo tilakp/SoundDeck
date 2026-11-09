@@ -88,6 +88,8 @@ final class SoundLibrary: ObservableObject {
             recentIDs = loaded.recentIDs
             if loaded.version < 3 { removeExtensionsFromNames() }
             replaceMissingBundledSounds()
+            if loaded.version < 4 { addMeetingSounds() }
+            if loaded.version < 5 { forgetMeasurements(of: Self.rerecordedSounds) }
             copyOldImports()
         } else {
             loadBundledSounds()
@@ -104,6 +106,41 @@ final class SoundLibrary: ObservableObject {
                 let sound = decks[deck].sounds[index]
                 guard sound.name == sound.fileName else { continue }
                 decks[deck].sounds[index].name = SoundItem.displayName(forFileName: sound.fileName)
+            }
+        }
+        save()
+    }
+
+    /// The bundled sounds that version 4 added.
+    static let meetingSounds = [
+        "Crickets.wav", "Drum roll.wav", "Ta-da.wav", "Cheer.wav",
+        "Ticking clock.wav", "Alarm.wav", "Quack.wav",
+    ]
+
+    /// Before version 4, the deck had no meeting sounds. Add them to the end of each deck
+    /// that has a bundled pad and is not locked. This runs one time: the next save writes version 4.
+    /// Thus a meeting sound that the user removes does not come back.
+    private func addMeetingSounds() {
+        let names = bundledFileNames()
+        for deck in decks.indices where !decks[deck].isLocked && decks[deck].sounds.contains(where: \.isBundled) {
+            let present = Set(decks[deck].sounds.filter(\.isBundled).map(\.fileName))
+            let added = Self.meetingSounds.filter { names.contains($0) && !present.contains($0) }
+            decks[deck].sounds.append(contentsOf: added.map { SoundItem(name: $0) })
+        }
+        save()
+    }
+
+    /// The bundled files that version 5 replaced with recordings. The names did not change.
+    static let rerecordedSounds = ["Applause.wav", "Ba-dum-tss.wav"]
+
+    /// A pad keeps the loudness of its old file. Clear it, so that the library measures the new file.
+    private func forgetMeasurements(of fileNames: [String]) {
+        for deck in decks.indices {
+            for index in decks[deck].sounds.indices {
+                let sound = decks[deck].sounds[index]
+                guard sound.isBundled, fileNames.contains(sound.fileName) else { continue }
+                decks[deck].sounds[index].measuredLoudness = nil
+                decks[deck].sounds[index].measuredPeak = nil
             }
         }
         save()
@@ -580,8 +617,10 @@ final class SoundLibrary: ObservableObject {
     /// The order of the bundled sounds on a new deck. It is the same as the web demo.
     /// A bundled file that is not in this list goes after these files, in name order.
     private static let bundledOrder = [
-        "Ba-dum-tss.wav", "Laser.wav", "Glass.wav", "Chime.wav", "Bike bell.wav",
-        "Whistle.wav", "Gong.wav", "Sad trombone.wav", "Applause.wav",
+        // The keys 1 to 0 go to the first ten pads. Put the meeting sounds first.
+        "Ba-dum-tss.wav", "Crickets.wav", "Drum roll.wav", "Ta-da.wav", "Applause.wav",
+        "Cheer.wav", "Sad trombone.wav", "Ticking clock.wav", "Alarm.wav", "Gong.wav",
+        "Quack.wav", "Chime.wav", "Bike bell.wav", "Whistle.wav", "Glass.wav", "Laser.wav",
     ]
 
     /// The file names of the bundled sounds, in deck order.
