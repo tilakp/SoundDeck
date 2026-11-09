@@ -234,6 +234,43 @@ struct SoundItem: Identifiable, Codable, Equatable {
         return stripped.isEmpty ? fileName : stripped
     }
 
+    /// A short name for a downloaded file. "mixkit-crowd-laugh-424.wav" gives "Crowd laugh".
+    ///
+    /// The function removes the site name, the id number and words such as "sound effect".
+    /// A name with spaces and few hyphens, for example "Ba-dum-tss", keeps its hyphens.
+    static func cleanName(forFileName fileName: String) -> String {
+        var text = displayName(forFileName: fileName)
+        // Freesound gives "<id>__<user>__<title>".
+        let freesound = text.components(separatedBy: "__")
+        if freesound.count >= 3, Int(freesound[0]) != nil {
+            text = freesound.dropFirst(2).joined(separator: " ")
+        }
+        let isSlug = text.contains("_") || (!text.contains(" ") && text.split(separator: "-").count >= 4)
+        text = text.replacingOccurrences(of: "_", with: " ")
+        if isSlug { text = text.replacingOccurrences(of: "-", with: " ") }
+        var words = text.split(separator: " ").map(String.init)
+
+        let sources: Set<String> = ["mixkit", "pixabay", "zapsplat", "freesound", "soundbible", "viralaudio", "freesoundslibrary"]
+        let fillers: Set<String> = ["sfx", "fx", "free", "hd", "sound", "sounds", "effect", "effects", "audio", "mp3", "wav"]
+        if let first = words.first, sources.contains(first.lowercased()) { words.removeFirst() }
+        // Remove id numbers and fillers from the end. A short number such as "2" stays.
+        while let last = words.last {
+            let lower = last.lowercased()
+            let isID = lower.count >= 3 && lower.allSatisfy(\.isNumber)
+            guard isID || fillers.contains(lower) else { break }
+            words.removeLast()
+        }
+        while let first = words.first, first.count >= 3, first.allSatisfy(\.isNumber) { words.removeFirst() }
+
+        var name = words.joined(separator: " ")
+        guard !name.isEmpty else { return displayName(forFileName: fileName) }
+        // Capitalize a name that is all lowercase. Keep the case that a person chose.
+        if name == name.lowercased(), let first = name.first {
+            name = first.uppercased() + name.dropFirst()
+        }
+        return name
+    }
+
     /// The location of the copy, if `isCopied` is true.
     func copyURL(in directory: URL) -> URL {
         directory

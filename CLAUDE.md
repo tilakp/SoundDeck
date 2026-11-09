@@ -98,7 +98,7 @@ The data flows in one direction. The type `SoundLibrary` holds the contents of t
 
 This file holds the model and the type `BookmarkFlavor`.
 
-A pad has one of three sources. A bundled pad reads `Resources/<fileName>`. A copied pad reads `Sounds/<id>/<fileName>` in the library directory. An old pad reads its bookmark. The display name is `name`. A rename does not change `fileName`.
+A pad has one of three sources. A bundled pad reads `Resources/<fileName>`. A copied pad reads `Sounds/<id>/<fileName>` in the library directory. An old pad reads its bookmark. The display name is `name`. A rename does not change `fileName`. An imported pad gets its name from `SoundItem.cleanName(forFileName:)`. This function removes the site name, the id number and words such as "sound effect".
 
 The icon of a pad is an SF Symbol in `symbol`. The list `PadSymbols.choices` gives the permitted symbols. A test checks that each symbol exists. The field `emoji` is from an earlier version. The tile still shows it.
 
@@ -114,7 +114,7 @@ A deck shows a grid or a cue list. `Deck.layout` holds the choice. A locked deck
 
 This file writes JSON to `~/Library/Application Support/SoundDeck/library.json`. The write is atomic.
 
-Version 2 of the file holds the decks and the active deck. The store reads a version 1 file as one deck with the name "Main". In version 3, pad names have no file extension. The library removes the extension one time from each name that the user did not change. In version 4, the library adds the meeting sounds one time to the end of each deck that has a bundled pad and is not locked. The list is `SoundLibrary.meetingSounds`. In version 5, the library clears the loudness of the pads in `SoundLibrary.rerecordedSounds`. A pad keeps its measurement, so a new file with the same name needs this step. In version 6, the library gives each bundled pad its icon from `PadSymbols.bundled`, unless the pad has an emoji. The file also holds the Recent list. The directory `Sounds/` holds the copied audio files. Tests give the store a temporary directory.
+Version 2 of the file holds the decks and the active deck. The store reads a version 1 file as one deck with the name "Main". In version 3, pad names have no file extension. The library removes the extension one time from each name that the user did not change. In version 4, the library adds the meeting sounds one time to the end of each deck that has a bundled pad and is not locked. The list is `SoundLibrary.meetingSounds`. In version 5, the library clears the loudness of the pads in `SoundLibrary.rerecordedSounds`. A pad keeps its measurement, so a new file with the same name needs this step. In version 6, the library gives each bundled pad its icon from `PadSymbols.bundled`, unless the pad has an emoji. In version 7, the library cleans the name of each imported pad that the user did not rename. The file also holds the Recent list. The directory `Sounds/` holds the copied audio files. Tests give the store a temporary directory.
 
 Do not use `UserDefaults`. `UserDefaults` is a preferences store. A change to the sandbox status replaces the container. An earlier build lost its library for this reason.
 
@@ -150,7 +150,7 @@ The engine attaches a voice at playback. The engine detaches the voice at retire
 
 The engine pauses when it is idle. This releases the output device.
 
-The engine stops when the output device changes or the Mac sleeps. The engine then retires all voices and routes again. It also routes again when a device is added or removed, or when the system default changes. If the selected device is missing, the engine uses the system default. It keeps the selection, so it goes back when the device returns.
+The engine stops when the output device changes or the Mac sleeps. The engine then retires all voices and routes again. It also routes again when a device is added or removed, or when the system default changes. If the selected device is missing, the engine uses the system default. The header shows the name of the device that plays, also when it follows the system default. It keeps the selection, so it goes back when the device returns.
 
 After a change of device, the engine connects the main mixer again at the sample rate of the device. Without this, a device with another rate can fail or play no sound.
 

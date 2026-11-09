@@ -91,6 +91,7 @@ final class SoundLibrary: ObservableObject {
             if loaded.version < 4 { addMeetingSounds() }
             if loaded.version < 5 { forgetMeasurements(of: Self.rerecordedSounds) }
             if loaded.version < 6 { addBundledSymbols() }
+            if loaded.version < 7 { cleanImportedNames() }
             copyOldImports()
         } else {
             loadBundledSounds()
@@ -155,6 +156,18 @@ final class SoundLibrary: ObservableObject {
                 let sound = decks[deck].sounds[index]
                 guard sound.isBundled, sound.symbol == nil, sound.emoji == nil else { continue }
                 decks[deck].sounds[index].symbol = PadSymbols.bundled[sound.fileName]
+            }
+        }
+        save()
+    }
+
+    /// Before version 7, an imported pad showed the raw file name. Clean each name that the user did not change.
+    private func cleanImportedNames() {
+        for deck in decks.indices {
+            for index in decks[deck].sounds.indices {
+                let sound = decks[deck].sounds[index]
+                guard !sound.isBundled, sound.name == SoundItem.displayName(forFileName: sound.fileName) else { continue }
+                decks[deck].sounds[index].name = SoundItem.cleanName(forFileName: sound.fileName)
             }
         }
         save()
@@ -288,6 +301,7 @@ final class SoundLibrary: ObservableObject {
         let didAccess = url.startAccessingSecurityScopedResource()
         defer { if didAccess { url.stopAccessingSecurityScopedResource() } }
         var item = SoundItem(copiedFileName: fileName)
+        item.name = SoundItem.cleanName(forFileName: fileName)
         do {
             try storeCopy(of: url, for: item, move: false)
         } catch {

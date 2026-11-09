@@ -96,3 +96,45 @@ struct PadSymbolTests {
         #expect(library.sound(withID: chime.id)?.emoji == "🎸")
     }
 }
+
+struct CleanNameTests {
+    @Test func removesSitesIdsAndFillers() {
+        #expect(SoundItem.cleanName(forFileName: "viralaudio-descent-whoosh-long-cinematic-sound-effect-405921.mp3")
+                == "Descent whoosh long cinematic")
+        #expect(SoundItem.cleanName(forFileName: "mixkit-crowd-laugh-424.wav") == "Crowd laugh")
+        #expect(SoundItem.cleanName(forFileName: "zapsplat_cartoon_boing_001.mp3") == "Cartoon boing")
+        #expect(SoundItem.cleanName(forFileName: "123456__someone__air horn.wav") == "Air horn")
+    }
+
+    @Test func keepsNamesThatAPersonWrote() {
+        #expect(SoundItem.cleanName(forFileName: "Ba-dum-tss.wav") == "Ba-dum-tss")
+        #expect(SoundItem.cleanName(forFileName: "Intro Take 2.m4a") == "Intro Take 2")
+        #expect(SoundItem.cleanName(forFileName: "DJ Airhorn.mp3") == "DJ Airhorn")
+        // A name that is only an id keeps the file name.
+        #expect(SoundItem.cleanName(forFileName: "405921.mp3") == "405921")
+        // Two hyphenated words are not a slug. Only the first letter changes.
+        #expect(SoundItem.cleanName(forFileName: "sound-effect.wav") == "Sound-effect")
+    }
+
+    @MainActor
+    @Test func version6LibraryCleansImportedNames() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("SoundDeckTests-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let raw = SoundItem(copiedFileName: "mixkit-crowd-laugh-424.wav")
+        var renamed = SoundItem(copiedFileName: "mixkit-door-bell-12.wav")
+        renamed.name = "Front door"
+        let deck = Deck(name: "Main", sounds: [raw, renamed])
+        let store = SoundLibraryStore(directoryURL: directory)
+        store.save(.init(decks: [deck], activeDeckID: deck.id, version: 6))
+        // The save always writes the current version. Write version 6 by hand.
+        let file = directory.appendingPathComponent("library.json")
+        let text = try String(contentsOf: file, encoding: .utf8)
+            .replacingOccurrences(of: "\"version\" : \(SoundLibraryStore.currentVersion)", with: "\"version\" : 6")
+        try text.write(to: file, atomically: true, encoding: .utf8)
+
+        let library = SoundLibrary(store: store)
+        #expect(library.sound(withID: raw.id)?.name == "Crowd laugh")
+        #expect(library.sound(withID: renamed.id)?.name == "Front door")
+    }
+}

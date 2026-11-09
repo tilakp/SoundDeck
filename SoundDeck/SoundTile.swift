@@ -207,6 +207,19 @@ struct SoundTile: View {
 
     // MARK: Context menu
 
+    /// A key for the pad. The library removes the key from the pad that had it.
+    private func hotKeyButton(_ key: String) -> some View {
+        Button {
+            update { $0.hotKey = key }
+        } label: {
+            if sound.hotKey?.lowercased() == key {
+                Label(key.uppercased(), systemImage: "checkmark")
+            } else {
+                Text(key.uppercased())
+            }
+        }
+    }
+
     @ViewBuilder
     private var menu: some View {
         Button("Play") { play() }
@@ -248,8 +261,11 @@ struct SoundTile: View {
 
         Menu("Hotkey") {
             Button("None") { update { $0.hotKey = nil } }
-            ForEach((1...9).map(String.init) + ["0"], id: \.self) { key in
-                Button(key) { update { $0.hotKey = key } }
+            Divider()
+            ForEach((1...9).map(String.init) + ["0"], id: \.self) { key in hotKeyButton(key) }
+            // The letters are in a submenu, so the menu stays short.
+            Menu("Letters") {
+                ForEach("abcdefghijklmnopqrstuvwxyz".map(String.init), id: \.self) { key in hotKeyButton(key) }
             }
         }
         .disabled(isLocked)

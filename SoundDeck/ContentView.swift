@@ -243,7 +243,7 @@ struct ContentView: View {
                 engine.selectOutputDevice(uid: nil)
             } label: {
                 HStack {
-                    Text("System Default")
+                    Text(engine.defaultOutputDeviceName.map { "System Default (\($0))" } ?? "System Default")
                     if engine.selectedDeviceUID == nil { Image(systemName: "checkmark") }
                 }
             }

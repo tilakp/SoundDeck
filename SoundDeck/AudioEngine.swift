@@ -758,12 +758,20 @@ final class AudioEngine: ObservableObject {
         return status == noErr ? device : nil
     }
 
+    /// The name of the device that plays. Without a selection, or when the selected device is
+    /// missing, the engine plays on the system default. Then this gives the name of that device.
     var selectedDeviceName: String {
-        guard let selectedDeviceUID,
-              let device = outputDevices.first(where: { $0.uid == selectedDeviceUID }) else {
-            return "System Default"
+        if let selectedDeviceUID,
+           let device = outputDevices.first(where: { $0.uid == selectedDeviceUID }) {
+            return device.name
         }
-        return device.name
+        return defaultOutputDeviceName ?? "System Default"
+    }
+
+    /// The name of the system default output, or nil if the system has no output.
+    var defaultOutputDeviceName: String? {
+        guard let id = AudioDeviceList.defaultOutputDevice() else { return nil }
+        return outputDevices.first { $0.id == id }?.name
     }
 
     // MARK: - Monitor
