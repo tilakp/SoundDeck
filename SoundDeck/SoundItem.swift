@@ -78,7 +78,10 @@ struct SoundItem: Identifiable, Codable, Equatable {
     var trimStart: Double
     var trimEnd: Double?
     var tint: SoundTint
+    /// An icon from an earlier version. New pads use `symbol`.
     var emoji: String?
+    /// The name of an SF Symbol from `PadSymbols.choices`. Nil means no icon.
+    var symbol: String?
     /// Single character used as this sound's keyboard trigger.
     var hotKey: String?
     /// The MIDI note or controller that plays this pad. Nil means no mapping.
@@ -130,6 +133,7 @@ struct SoundItem: Identifiable, Codable, Equatable {
     // For bundled
     init(name: String) {
         self.init(name: name, isBundled: true)
+        self.symbol = PadSymbols.bundled[name]
     }
 
     // For a copy in the library directory
@@ -160,6 +164,7 @@ struct SoundItem: Identifiable, Codable, Equatable {
         self.trimEnd = nil
         self.tint = .none
         self.emoji = nil
+        self.symbol = nil
         self.hotKey = nil
         self.midiTrigger = nil
         self.isFavorite = false
@@ -196,6 +201,7 @@ struct SoundItem: Identifiable, Codable, Equatable {
         // A tint from a newer build is not an error. The pad gets no tint.
         tint = (try? c.decodeIfPresent(SoundTint.self, forKey: .tint)) ?? .none
         emoji = try c.decodeIfPresent(String.self, forKey: .emoji)
+        symbol = try c.decodeIfPresent(String.self, forKey: .symbol)
         hotKey = try c.decodeIfPresent(String.self, forKey: .hotKey)
         // A mapping from a newer build is not an error. The pad gets no mapping.
         midiTrigger = (try? c.decodeIfPresent(MIDITrigger.self, forKey: .midiTrigger)) ?? nil
@@ -226,6 +232,43 @@ struct SoundItem: Identifiable, Codable, Equatable {
     static func displayName(forFileName fileName: String) -> String {
         let stripped = (fileName as NSString).deletingPathExtension
         return stripped.isEmpty ? fileName : stripped
+    }
+
+    /// A short name for a downloaded file. "mixkit-crowd-laugh-424.wav" gives "Crowd laugh".
+    ///
+    /// The function removes the site name, the id number and words such as "sound effect".
+    /// A name with spaces and few hyphens, for example "Ba-dum-tss", keeps its hyphens.
+    static func cleanName(forFileName fileName: String) -> String {
+        var text = displayName(forFileName: fileName)
+        // Freesound gives "<id>__<user>__<title>".
+        let freesound = text.components(separatedBy: "__")
+        if freesound.count >= 3, Int(freesound[0]) != nil {
+            text = freesound.dropFirst(2).joined(separator: " ")
+        }
+        let isSlug = text.contains("_") || (!text.contains(" ") && text.split(separator: "-").count >= 4)
+        text = text.replacingOccurrences(of: "_", with: " ")
+        if isSlug { text = text.replacingOccurrences(of: "-", with: " ") }
+        var words = text.split(separator: " ").map(String.init)
+
+        let sources: Set<String> = ["mixkit", "pixabay", "zapsplat", "freesound", "soundbible", "viralaudio", "freesoundslibrary"]
+        let fillers: Set<String> = ["sfx", "fx", "free", "hd", "sound", "sounds", "effect", "effects", "audio", "mp3", "wav"]
+        if let first = words.first, sources.contains(first.lowercased()) { words.removeFirst() }
+        // Remove id numbers and fillers from the end. A short number such as "2" stays.
+        while let last = words.last {
+            let lower = last.lowercased()
+            let isID = lower.count >= 3 && lower.allSatisfy(\.isNumber)
+            guard isID || fillers.contains(lower) else { break }
+            words.removeLast()
+        }
+        while let first = words.first, first.count >= 3, first.allSatisfy(\.isNumber) { words.removeFirst() }
+
+        var name = words.joined(separator: " ")
+        guard !name.isEmpty else { return displayName(forFileName: fileName) }
+        // Capitalize a name that is all lowercase. Keep the case that a person chose.
+        if name == name.lowercased(), let first = name.first {
+            name = first.uppercased() + name.dropFirst()
+        }
+        return name
     }
 
     /// The location of the copy, if `isCopied` is true.
@@ -283,4 +326,56 @@ enum BookmarkFlavor {
             relativeTo: nil
         )
     }
+}
+
+/// The icons that a pad can show. They are SF Symbols, so they follow the weight and the colour of the tile.
+enum PadSymbols {
+    static let choices: [(symbol: String, label: String)] = [
+        ("hands.clap.fill", "Applause"),
+        ("party.popper.fill", "Party"),
+        ("trophy.fill", "Trophy"),
+        ("star.fill", "Star"),
+        ("heart.fill", "Heart"),
+        ("hand.thumbsup.fill", "Thumbs Up"),
+        ("hand.thumbsdown.fill", "Thumbs Down"),
+        ("checkmark.circle.fill", "Correct"),
+        ("xmark.circle.fill", "Wrong"),
+        ("theatermasks.fill", "Comedy"),
+        ("face.smiling", "Smile"),
+        ("bell.fill", "Bell"),
+        ("alarm.fill", "Alarm"),
+        ("clock.fill", "Clock"),
+        ("megaphone.fill", "Megaphone"),
+        ("music.note", "Music"),
+        ("flag.checkered", "Finish"),
+        ("bolt.fill", "Bolt"),
+        ("sparkles", "Sparkles"),
+        ("wind", "Whoosh"),
+        ("bird.fill", "Bird"),
+        ("ladybug.fill", "Bug"),
+        ("bicycle", "Bicycle"),
+        ("wineglass.fill", "Glass"),
+        ("dollarsign.circle.fill", "Money"),
+        ("exclamationmark.triangle.fill", "Warning"),
+    ]
+
+    /// The icon of each bundled sound.
+    static let bundled: [String: String] = [
+        "Ba-dum-tss.wav": "theatermasks.fill",
+        "Crickets.wav": "ladybug.fill",
+        "Drum roll.wav": "music.note",
+        "Ta-da.wav": "party.popper.fill",
+        "Applause.wav": "hands.clap.fill",
+        "Cheer.wav": "trophy.fill",
+        "Sad trombone.wav": "hand.thumbsdown.fill",
+        "Ticking clock.wav": "clock.fill",
+        "Alarm.wav": "alarm.fill",
+        "Gong.wav": "flag.checkered",
+        "Quack.wav": "bird.fill",
+        "Chime.wav": "bell.fill",
+        "Bike bell.wav": "bicycle",
+        "Whistle.wav": "megaphone.fill",
+        "Glass.wav": "wineglass.fill",
+        "Laser.wav": "bolt.fill",
+    ]
 }

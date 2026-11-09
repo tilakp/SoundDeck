@@ -98,7 +98,9 @@ The data flows in one direction. The type `SoundLibrary` holds the contents of t
 
 This file holds the model and the type `BookmarkFlavor`.
 
-A pad has one of three sources. A bundled pad reads `Resources/<fileName>`. A copied pad reads `Sounds/<id>/<fileName>` in the library directory. An old pad reads its bookmark. The display name is `name`. A rename does not change `fileName`.
+A pad has one of three sources. A bundled pad reads `Resources/<fileName>`. A copied pad reads `Sounds/<id>/<fileName>` in the library directory. An old pad reads its bookmark. The display name is `name`. A rename does not change `fileName`. An imported pad gets its name from `SoundItem.cleanName(forFileName:)`. This function removes the site name, the id number and words such as "sound effect".
+
+The icon of a pad is an SF Symbol in `symbol`. The list `PadSymbols.choices` gives the permitted symbols. A test checks that each symbol exists. The field `emoji` is from an earlier version. The tile still shows it.
 
 The decoder reads each new field with `decodeIfPresent`. A strict decoder rejects an older library file. A rejected file deletes the deck of the user. Keep this method when you add a field.
 
@@ -112,7 +114,7 @@ A deck shows a grid or a cue list. `Deck.layout` holds the choice. A locked deck
 
 This file writes JSON to `~/Library/Application Support/SoundDeck/library.json`. The write is atomic.
 
-Version 2 of the file holds the decks and the active deck. The store reads a version 1 file as one deck with the name "Main". In version 3, pad names have no file extension. The library removes the extension one time from each name that the user did not change. The file also holds the Recent list. The directory `Sounds/` holds the copied audio files. Tests give the store a temporary directory.
+Version 2 of the file holds the decks and the active deck. The store reads a version 1 file as one deck with the name "Main". In version 3, pad names have no file extension. The library removes the extension one time from each name that the user did not change. In version 4, the library adds the meeting sounds one time to the end of each deck that has a bundled pad and is not locked. The list is `SoundLibrary.meetingSounds`. In version 5, the library clears the loudness of the pads in `SoundLibrary.rerecordedSounds`. A pad keeps its measurement, so a new file with the same name needs this step. In version 6, the library gives each bundled pad its icon from `PadSymbols.bundled`, unless the pad has an emoji. In version 7, the library cleans the name of each imported pad that the user did not rename. The file also holds the Recent list. The directory `Sounds/` holds the copied audio files. Tests give the store a temporary directory.
 
 Do not use `UserDefaults`. `UserDefaults` is a preferences store. A change to the sandbox status replaces the container. An earlier build lost its library for this reason.
 
@@ -126,7 +128,7 @@ This file adds, removes, reorders and renames sounds. It also assigns hotkeys an
 
 The property `sounds` gives the pads of the active deck. The function `sound(withID:)` finds a pad in any deck. A pad from another deck can still play.
 
-When you remove a pad or a deck, the library deletes the copied files.
+When you remove a deck, the library deletes the copied files. When you remove a pad, the library moves its copy to `Sounds/.removed/`. Edit > Undo calls `restore`, which moves the copy back. The next start empties `Sounds/.removed/`. Do not delete unused folders in `Sounds/` at start: a pad that the store could not read still needs its file.
 
 The function `resolve()` saves a refreshed bookmark when macOS reports a stale bookmark.
 
@@ -148,7 +150,7 @@ The engine attaches a voice at playback. The engine detaches the voice at retire
 
 The engine pauses when it is idle. This releases the output device.
 
-The engine stops when the output device changes or the Mac sleeps. The engine then retires all voices and routes again. It also routes again when a device is added or removed, or when the system default changes. If the selected device is missing, the engine uses the system default. It keeps the selection, so it goes back when the device returns.
+The engine stops when the output device changes or the Mac sleeps. The engine then retires all voices and routes again. It also routes again when a device is added or removed, or when the system default changes. If the selected device is missing, the engine uses the system default. The header shows the name of the device that plays, also when it follows the system default. It keeps the selection, so it goes back when the device returns.
 
 After a change of device, the engine connects the main mixer again at the sample rate of the device. Without this, a device with another rate can fail or play no sound.
 
@@ -280,9 +282,17 @@ The surfaces are opaque. Do not use `.ultraThinMaterial`. On macOS a material sa
 
 The main views are `ContentView`, `SoundTile`, `SoundInspector`, `MenuBarDeck`, `MiniPadGrid` and `SettingsView`.
 
+The window has an empty unified toolbar (`UnifiedTitlebar`). The title bar is then 52 points high, and the window buttons are at its vertical centre. The header draws in this band. `Theme.windowButtonsInset` keeps it clear of the window buttons.
+
+A tile shows the icon, the name, the key, a waveform and the play length. The pad colour tints the whole tile. `PadPreviews` in `PadPreview.swift` reads the waveform and the length in the background. Its key includes the trim and the speed, so a change makes a new preview. Only the waveform of a playing pad observes `Playhead`.
+
 The main window shows no alert for a playback error. The monitor strip shows the error for 4 seconds. The type `TransientNotice` controls this period. Only import and export show an alert. Stop All is at the right of the monitor strip.
 
 The Add button is a menu: Add Files, Record, Speech Pad and Freesound. The context menu of a deck has Rename, Export, Lock and Delete. Command-F focuses the search field.
+
+The Playback menu has Stop All Sounds (⌘.), Play Last Pad Again (⌘R), Next Deck (⌘]) and Previous Deck (⌘[). These items also work from the floating deck and from Settings.
+
+An empty deck shows the buttons Add Files, Record and Freesound.
 
 Space always stops all sounds, also when a pad has focus. Return plays the focused pad, or plays the last pad again when no pad has focus.
 
@@ -316,7 +326,9 @@ The asset catalog uses a second copy of the 32 pixel file with the name `icon_32
 
 ## Bundled sounds
 
-A script creates the nine files in `sounds/`. The page `Tools/MakeSounds.html` holds a copy of the Web Audio synthesis of the demo on quietpixel.dev. The script opens this page in headless Chrome and writes 16-bit mono WAV files.
+The directory `sounds/` holds 16 files. Nine files are trimmed CC0 recordings. The section "Credits" in `README.md` gives their sources. Only add a CC0 file. Do not put a text file in `sounds/`, because the synced folder copies it into the app.
+
+A script creates the other seven files in `sounds/`. It also writes `Applause.wav` and `Ba-dum-tss.wav`. Do not copy these two files, because the recordings replace them. The page `Tools/MakeSounds.html` holds a copy of the Web Audio synthesis of the demo on quietpixel.dev. The script opens this page in headless Chrome and writes 16-bit mono WAV files.
 
 To create the sound files, type the commands that follow.
 

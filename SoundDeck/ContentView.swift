@@ -20,6 +20,8 @@ struct ContentView: View {
     @State private var deletingDeck: Deck?
     @State private var notice = TransientNotice()
     @State private var showingShortcuts = false
+    @StateObject private var previews = PadPreviews()
+    @Environment(\.undoManager) private var undoManager
     @FocusState private var searchFocused: Bool
 
     private static let audioExtensions: Set<String> = [
@@ -30,17 +32,22 @@ struct ContentView: View {
         ZStack {
             Theme.backdrop.ignoresSafeArea()
 
-            VStack(spacing: Theme.Spacing.l) {
+            VStack(spacing: Theme.Spacing.m) {
+                // The header is in the title bar, in one row with the window buttons.
                 header
+                    .padding(.leading, Theme.windowButtonsInset - Theme.Spacing.l)
+                    .frame(height: Theme.titlebarHeight)
                 monitor
                 deckBar
                 deckArea
             }
-            .padding(Theme.Spacing.l)
+            .padding([.horizontal, .bottom], Theme.Spacing.l)
+            .ignoresSafeArea(.container, edges: .top)
 
             if isDropTargeted { dropOverlay }
         }
         .frame(minWidth: 720, minHeight: 560)
+        .background(UnifiedTitlebar())
         .background(KeyboardHandler(
             onStop: { engine.stopAll() },
             onReplay: replayOrFireFocusedPad,
@@ -237,7 +244,7 @@ struct ContentView: View {
                 engine.selectOutputDevice(uid: nil)
             } label: {
                 HStack {
-                    Text("System Default")
+                    Text(engine.defaultOutputDeviceName.map { "System Default (\($0))" } ?? "System Default")
                     if engine.selectedDeviceUID == nil { Image(systemName: "checkmark") }
                 }
             }
@@ -308,7 +315,7 @@ struct ContentView: View {
                     .frame(width: 150, alignment: .leading)
 
                 monitorCentre
-                    .frame(height: 44)
+                    .frame(height: 28)
                     .frame(maxWidth: .infinity)
 
                 masterVolume
@@ -319,7 +326,7 @@ struct ContentView: View {
                 }
             }
             .padding(.horizontal, Theme.Spacing.l)
-            .padding(.vertical, Theme.Spacing.m)
+            .padding(.vertical, Theme.Spacing.s)
         }
     }
 
@@ -379,6 +386,27 @@ struct ContentView: View {
     /// The smart decks, then the decks. Keys play pads of the active deck only.
     /// A smart deck does not change the active deck, so the keys keep the last real deck.
     private var deckBar: some View {
+        HStack(spacing: Theme.Spacing.m) {
+            deckChips
+            layoutPicker
+        }
+    }
+
+    private var layoutPicker: some View {
+        Picker("Layout", selection: Binding(
+            get: { library.activeDeck.layout },
+            set: { library.setLayout($0) }
+        )) {
+            ForEach(DeckLayout.allCases) { Text($0.label).tag($0) }
+        }
+        .pickerStyle(.segmented)
+        .labelsHidden()
+        .controlSize(.small)
+        .fixedSize()
+        .help("Show the deck as a grid of pads or as a cue list")
+    }
+
+    private var deckChips: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: Theme.Spacing.s) {
                 ForEach(SmartDeck.allCases) { smart in smartChip(smart) }
@@ -522,28 +550,12 @@ struct ContentView: View {
         focusedPadID = sounds[target].id
     }
 
-    /// The grid or the cue list of the active deck, with the layout control above it.
-    private var deckArea: some View {
-        VStack(spacing: Theme.Spacing.s) {
-            HStack {
-                Spacer()
-                Picker("Layout", selection: Binding(
-                    get: { library.activeDeck.layout },
-                    set: { library.setLayout($0) }
-                )) {
-                    ForEach(DeckLayout.allCases) { Text($0.label).tag($0) }
-                }
-                .pickerStyle(.segmented)
-                .labelsHidden()
-                .controlSize(.small)
-                .fixedSize()
-                .help("Show the deck as a grid of pads or as a cue list")
-            }
-            if library.activeDeck.layout == .cueList {
-                CueListView(library: library, engine: engine, go: goCue)
-            } else {
-                deck
-            }
+    /// The grid or the cue list of the active deck. The layout control is in the deck bar.
+    @ViewBuilder private var deckArea: some View {
+        if library.activeDeck.layout == .cueList {
+            CueListView(library: library, engine: engine, go: goCue)
+        } else {
+            deck
         }
     }
 
@@ -574,16 +586,14 @@ struct ContentView: View {
                                 isFocused: focusedPadID == sound.id,
                                 errorMessage: engine.padErrors[sound.id],
                                 playhead: engine.playhead,
+                                preview: previews.preview(for: sound),
                                 play: {
                                     endEditing()
                                     play(sound)
                                 },
                                 release: { engine.release(sound) },
                                 stop: { engine.stop(sound) },
-                                remove: {
-                                    engine.stop(sound, fade: false)
-                                    library.remove(sound)
-                                },
+                                remove: { removePad(sound) },
                                 update: { mutate in library.update(sound, mutate) },
                                 openInspector: { inspecting = sound },
                                 moveTargets: library.moveTargets(for: sound),
@@ -592,6 +602,9 @@ struct ContentView: View {
                                 deckLabel: library.showsAllDecks ? library.deckName(of: sound.id) : nil
                             )
                             .focused($focusedPadID, equals: sound.id)
+                            .task(id: PadPreviews.Key(sound)) {
+                                previews.load(sound, resolution: library.resolve(sound))
+                            }
                             .onDrag {
                                 NSItemProvider(object: sound.id.uuidString as NSString)
                             }
@@ -624,6 +637,15 @@ struct ContentView: View {
             Text(text.detail)
                 .font(Theme.Font.body())
                 .foregroundStyle(Theme.textTertiary)
+            // An empty deck gives the ways to fill it. A search or a smart deck does not.
+            if !library.isSearching, library.smartDeck == nil, !library.activeDeck.isLocked {
+                HStack(spacing: Theme.Spacing.s) {
+                    ChromeButton(title: "Add Files", icon: "plus", prominent: true) { showingFileImporter = true }
+                    ChromeButton(title: "Record", icon: "mic") { recording = true }
+                    ChromeButton(title: "Freesound", icon: "globe") { searchingFreesound = true }
+                }
+                .padding(.top, Theme.Spacing.s)
+            }
         }
     }
 
@@ -665,6 +687,29 @@ struct ContentView: View {
     }
 
     // MARK: - Actions
+
+    /// Removes a pad. Edit > Undo puts it back, and Redo removes it again.
+    private func removePad(_ sound: SoundItem) {
+        engine.stop(sound, fade: false)
+        guard let removed = library.removeUndoably(sound) else { return }
+        registerUndo(of: removed)
+    }
+
+    private func registerUndo(of removed: SoundLibrary.RemovedPad) {
+        guard let undoManager else { return }
+        undoManager.registerUndo(withTarget: library) { library in
+            MainActor.assumeIsolated {
+                guard library.restore(removed) else { return }
+                undoManager.registerUndo(withTarget: library) { library in
+                    MainActor.assumeIsolated {
+                        if let again = library.removeUndoably(removed.item) { registerUndo(of: again) }
+                    }
+                }
+                undoManager.setActionName("Remove Pad")
+            }
+        }
+        undoManager.setActionName("Remove Pad")
+    }
 
     private func triggerHotKey(_ character: String) {
         guard let sound = library.sound(forHotKey: character) else { return }
@@ -813,15 +858,35 @@ struct KeyboardHandler: NSViewRepresentable {
         var onRelease: ((String) -> Void)?
         var onGo: (() -> Void)?
         private var monitor: Any?
+        private var keyObserver: NSObjectProtocol?
 
         override func viewDidMoveToWindow() {
             super.viewDidMoveToWindow()
             if let monitor { NSEvent.removeMonitor(monitor) }
             monitor = nil
-            guard window != nil else { return }
+            if let keyObserver { NotificationCenter.default.removeObserver(keyObserver) }
+            keyObserver = nil
+            guard let window else { return }
             monitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .keyUp]) { [weak self] event in
                 guard let self, event.window === self.window, self.handle(event) else { return event }
                 return nil
+            }
+            // When the window first becomes key, AppKit gives the focus to the first text field.
+            // That is the search field, so the pad keys type into it. Remove that focus one time.
+            if window.isKeyWindow {
+                clearInitialFocus()
+            } else {
+                keyObserver = NotificationCenter.default.addObserver(
+                    forName: NSWindow.didBecomeKeyNotification, object: window, queue: .main
+                ) { [weak self] _ in self?.clearInitialFocus() }
+            }
+        }
+
+        private func clearInitialFocus() {
+            if let keyObserver { NotificationCenter.default.removeObserver(keyObserver) }
+            keyObserver = nil
+            DispatchQueue.main.async { [weak window] in
+                if window?.firstResponder is NSTextView { window?.makeFirstResponder(nil) }
             }
         }
 
@@ -862,6 +927,24 @@ struct KeyboardHandler: NSViewRepresentable {
                   let first = event.charactersIgnoringModifiers?.first,
                   first.isLetter || first.isNumber else { return nil }
             return String(first)
+        }
+    }
+}
+
+/// Gives the window an empty unified toolbar. The title bar is then 52 points high,
+/// and the window buttons are at its vertical centre. The header draws in this band.
+private struct UnifiedTitlebar: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSView { Accessor() }
+    func updateNSView(_ nsView: NSView, context: Context) {}
+
+    final class Accessor: NSView {
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            guard let window, window.toolbar == nil else { return }
+            window.toolbar = NSToolbar(identifier: "SoundDeckMain")
+            window.toolbarStyle = .unified
+            window.titleVisibility = .hidden
+            window.titlebarAppearsTransparent = true
         }
     }
 }
@@ -919,6 +1002,10 @@ private struct ShortcutList: View {
         ("Return", "Play the last pad again"),
         ("A–Z, 0–9", "Play the pad with that key"),
         (".", "Go: play the standby cue (List)"),
+        ("⌘.", "Stop all sounds, from any window"),
+        ("⌘R", "Play the last pad again, from any window"),
+        ("⌘[  ⌘]", "Previous deck, next deck"),
+        ("⌘Z", "Undo the removal of a pad"),
         ("⌘F", "Search"),
         ("Esc", "Leave the search field")
     ]

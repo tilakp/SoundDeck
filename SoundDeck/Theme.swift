@@ -186,10 +186,19 @@ enum Theme {
 
     // MARK: Geometry
 
+    /// The height of the title bar with a unified toolbar. The header fills it.
+    static let titlebarHeight: CGFloat = 52
+    /// The room for the close, minimize and zoom buttons at the left of the header.
+    static let windowButtonsInset: CGFloat = 92
+
     static let tileRadius: CGFloat = Radius.container
     static let tileMinWidth: CGFloat = 132
     static let tileHeight: CGFloat = 88
     static let tileSpacing: CGFloat = Spacing.s
+    /// The opacity of the pad colour on a tile at rest, on hover and while the pad plays.
+    static let tileWash: Double = 0.10
+    static let tileWashHover: Double = 0.16
+    static let tileWashActive: Double = 0.22
 }
 
 extension SoundTint {

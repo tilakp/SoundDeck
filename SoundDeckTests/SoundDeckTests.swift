@@ -411,7 +411,7 @@ struct LibraryLoudnessTests {
         }
         #expect(library.sounds.allSatisfy { $0.isMeasured })
         let applause = try #require(library.sounds.first { $0.fileName == "Applause.wav" })
-        #expect(abs(try #require(applause.measuredLoudness) - -29.1) < 0.2)
+        #expect(abs(try #require(applause.measuredLoudness) - -28.8) < 0.2)
     }
 }
 

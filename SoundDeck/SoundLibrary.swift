@@ -82,12 +82,17 @@ final class SoundLibrary: ObservableObject {
 
     init(store: SoundLibraryStore = SoundLibraryStore()) {
         self.store = store
+        defer { emptyHoldingDirectory() }
         if let loaded = store.load() {
             decks = loaded.decks
             activeDeckID = loaded.activeDeckID
             recentIDs = loaded.recentIDs
             if loaded.version < 3 { removeExtensionsFromNames() }
             replaceMissingBundledSounds()
+            if loaded.version < 4 { addMeetingSounds() }
+            if loaded.version < 5 { forgetMeasurements(of: Self.rerecordedSounds) }
+            if loaded.version < 6 { addBundledSymbols() }
+            if loaded.version < 7 { cleanImportedNames() }
             copyOldImports()
         } else {
             loadBundledSounds()
@@ -104,6 +109,66 @@ final class SoundLibrary: ObservableObject {
                 let sound = decks[deck].sounds[index]
                 guard sound.name == sound.fileName else { continue }
                 decks[deck].sounds[index].name = SoundItem.displayName(forFileName: sound.fileName)
+            }
+        }
+        save()
+    }
+
+    /// The bundled sounds that version 4 added.
+    static let meetingSounds = [
+        "Crickets.wav", "Drum roll.wav", "Ta-da.wav", "Cheer.wav",
+        "Ticking clock.wav", "Alarm.wav", "Quack.wav",
+    ]
+
+    /// Before version 4, the deck had no meeting sounds. Add them to the end of each deck
+    /// that has a bundled pad and is not locked. This runs one time: the next save writes version 4.
+    /// Thus a meeting sound that the user removes does not come back.
+    private func addMeetingSounds() {
+        let names = bundledFileNames()
+        for deck in decks.indices where !decks[deck].isLocked && decks[deck].sounds.contains(where: \.isBundled) {
+            let present = Set(decks[deck].sounds.filter(\.isBundled).map(\.fileName))
+            let added = Self.meetingSounds.filter { names.contains($0) && !present.contains($0) }
+            decks[deck].sounds.append(contentsOf: added.map { SoundItem(name: $0) })
+        }
+        save()
+    }
+
+    /// The bundled files that version 5 replaced with recordings. The names did not change.
+    static let rerecordedSounds = ["Applause.wav", "Ba-dum-tss.wav"]
+
+    /// A pad keeps the loudness of its old file. Clear it, so that the library measures the new file.
+    private func forgetMeasurements(of fileNames: [String]) {
+        for deck in decks.indices {
+            for index in decks[deck].sounds.indices {
+                let sound = decks[deck].sounds[index]
+                guard sound.isBundled, fileNames.contains(sound.fileName) else { continue }
+                decks[deck].sounds[index].measuredLoudness = nil
+                decks[deck].sounds[index].measuredPeak = nil
+            }
+        }
+        save()
+    }
+
+    /// Before version 6, pads had no SF Symbol. Give each bundled pad its icon,
+    /// unless the user chose an emoji for it.
+    private func addBundledSymbols() {
+        for deck in decks.indices {
+            for index in decks[deck].sounds.indices {
+                let sound = decks[deck].sounds[index]
+                guard sound.isBundled, sound.symbol == nil, sound.emoji == nil else { continue }
+                decks[deck].sounds[index].symbol = PadSymbols.bundled[sound.fileName]
+            }
+        }
+        save()
+    }
+
+    /// Before version 7, an imported pad showed the raw file name. Clean each name that the user did not change.
+    private func cleanImportedNames() {
+        for deck in decks.indices {
+            for index in decks[deck].sounds.indices {
+                let sound = decks[deck].sounds[index]
+                guard !sound.isBundled, sound.name == SoundItem.displayName(forFileName: sound.fileName) else { continue }
+                decks[deck].sounds[index].name = SoundItem.cleanName(forFileName: sound.fileName)
             }
         }
         save()
@@ -237,6 +302,7 @@ final class SoundLibrary: ObservableObject {
         let didAccess = url.startAccessingSecurityScopedResource()
         defer { if didAccess { url.stopAccessingSecurityScopedResource() } }
         var item = SoundItem(copiedFileName: fileName)
+        item.name = SoundItem.cleanName(forFileName: fileName)
         do {
             try storeCopy(of: url, for: item, move: false)
         } catch {
@@ -285,10 +351,41 @@ final class SoundLibrary: ObservableObject {
     /// Returns false when the deck of the pad is locked.
     @discardableResult
     func remove(_ sound: SoundItem) -> Bool {
-        guard let location = locate(sound.id), !decks[location.deck].isLocked else { return false }
+        removeUndoably(sound) != nil
+    }
+
+    /// A removed pad, with the place that Undo puts it back in.
+    struct RemovedPad {
+        let item: SoundItem
+        let deckID: UUID
+        let index: Int
+    }
+
+    /// Removes a pad and keeps its copied file in a holding directory until the next start.
+    /// Returns nil when the deck of the pad is locked.
+    @discardableResult
+    func removeUndoably(_ sound: SoundItem) -> RemovedPad? {
+        guard let location = locate(sound.id), !decks[location.deck].isLocked else { return nil }
         let item = decks[location.deck].sounds.remove(at: location.sound)
-        deleteCopy(of: item)
+        holdCopy(of: item)
         recentIDs.removeAll { $0 == item.id }
+        save()
+        return RemovedPad(item: item, deckID: decks[location.deck].id, index: location.sound)
+    }
+
+    /// Puts a removed pad back in its deck. Returns false when the deck is gone or locked.
+    /// If another pad took the key in the meantime, the restored pad has no key.
+    @discardableResult
+    func restore(_ removed: RemovedPad) -> Bool {
+        guard let deck = decks.firstIndex(where: { $0.id == removed.deckID }), !decks[deck].isLocked,
+              locate(removed.item.id) == nil else { return false }
+        var item = removed.item
+        if let key = item.hotKey?.lowercased(),
+           decks[deck].sounds.contains(where: { $0.hotKey?.lowercased() == key }) {
+            item.hotKey = nil
+        }
+        releaseCopy(of: item)
+        decks[deck].sounds.insert(item, at: min(removed.index, decks[deck].sounds.count))
         save()
         return true
     }
@@ -402,6 +499,13 @@ final class SoundLibrary: ObservableObject {
         save()
     }
 
+    /// Selects the next deck (`offset` 1) or the previous deck (`offset` -1). The order wraps.
+    func selectAdjacentDeck(offset: Int) {
+        guard !decks.isEmpty else { return }
+        let next = (activeIndex + offset % decks.count + decks.count) % decks.count
+        selectDeck(decks[next].id)
+    }
+
     @discardableResult
     func renameDeck(_ id: UUID, to newName: String) -> Bool {
         let trimmed = newName.trimmingCharacters(in: .whitespaces)
@@ -510,6 +614,33 @@ final class SoundLibrary: ObservableObject {
         }
     }
 
+    /// Removed pads keep their copies here, so Undo can put them back. The next start empties it.
+    private var holdingDirectoryURL: URL {
+        store.soundsDirectoryURL.appendingPathComponent(".removed", isDirectory: true)
+    }
+
+    private func holdCopy(of item: SoundItem) {
+        guard item.isCopied else { return }
+        let source = item.copyURL(in: store.soundsDirectoryURL).deletingLastPathComponent()
+        let target = holdingDirectoryURL.appendingPathComponent(item.id.uuidString, isDirectory: true)
+        try? fileManager.createDirectory(at: holdingDirectoryURL, withIntermediateDirectories: true)
+        try? fileManager.removeItem(at: target)
+        if (try? fileManager.moveItem(at: source, to: target)) == nil {
+            try? fileManager.removeItem(at: source)
+        }
+    }
+
+    private func releaseCopy(of item: SoundItem) {
+        guard item.isCopied else { return }
+        let source = holdingDirectoryURL.appendingPathComponent(item.id.uuidString, isDirectory: true)
+        let target = item.copyURL(in: store.soundsDirectoryURL).deletingLastPathComponent()
+        try? fileManager.moveItem(at: source, to: target)
+    }
+
+    private func emptyHoldingDirectory() {
+        try? fileManager.removeItem(at: holdingDirectoryURL)
+    }
+
     private func deleteCopy(of item: SoundItem) {
         guard item.isCopied else { return }
         try? fileManager.removeItem(at: item.copyURL(in: store.soundsDirectoryURL).deletingLastPathComponent())
@@ -580,8 +711,10 @@ final class SoundLibrary: ObservableObject {
     /// The order of the bundled sounds on a new deck. It is the same as the web demo.
     /// A bundled file that is not in this list goes after these files, in name order.
     private static let bundledOrder = [
-        "Ba-dum-tss.wav", "Laser.wav", "Glass.wav", "Chime.wav", "Bike bell.wav",
-        "Whistle.wav", "Gong.wav", "Sad trombone.wav", "Applause.wav",
+        // The keys 1 to 0 go to the first ten pads. Put the meeting sounds first.
+        "Ba-dum-tss.wav", "Crickets.wav", "Drum roll.wav", "Ta-da.wav", "Applause.wav",
+        "Cheer.wav", "Sad trombone.wav", "Ticking clock.wav", "Alarm.wav", "Gong.wav",
+        "Quack.wav", "Chime.wav", "Bike bell.wav", "Whistle.wav", "Glass.wav", "Laser.wav",
     ]
 
     /// The file names of the bundled sounds, in deck order.

@@ -46,6 +46,17 @@ struct SoundDeckApp: App {
         }
     }
 
+    /// A failure marks the pad and shows in the monitor strip, as for every other trigger.
+    private func replayLast() {
+        do {
+            try engine.replayLast(in: library)
+        } catch {
+            if let id = engine.lastPlayedID, let sound = library.sound(withID: id) {
+                engine.recordFailure(error, for: sound)
+            }
+        }
+    }
+
     /// True when the app is the host of the unit tests.
     static var isRunningTests: Bool {
         NSClassFromString("XCTestCase") != nil
@@ -65,6 +76,22 @@ struct SoundDeckApp: App {
             CommandGroup(after: .windowArrangement) {
                 Button("Floating Deck") { FloatingDeck.shared?.toggle() }
                     .keyboardShortcut("f", modifiers: [.command, .option])
+            }
+            // The keys of the deck work only in the main window. These items also work from
+            // the floating deck and from Settings.
+            CommandMenu("Playback") {
+                Button("Stop All Sounds") { engine.stopAll() }
+                    .keyboardShortcut(".", modifiers: .command)
+                Button("Play Last Pad Again") { replayLast() }
+                    .keyboardShortcut("r", modifiers: .command)
+                    .disabled(engine.lastPlayedID == nil)
+                Divider()
+                Button("Next Deck") { library.selectAdjacentDeck(offset: 1) }
+                    .keyboardShortcut("]", modifiers: .command)
+                    .disabled(library.decks.count < 2)
+                Button("Previous Deck") { library.selectAdjacentDeck(offset: -1) }
+                    .keyboardShortcut("[", modifiers: .command)
+                    .disabled(library.decks.count < 2)
             }
         }
 
