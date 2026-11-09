@@ -21,6 +21,7 @@ struct ContentView: View {
     @State private var notice = TransientNotice()
     @State private var showingShortcuts = false
     @StateObject private var previews = PadPreviews()
+    @Environment(\.undoManager) private var undoManager
     @FocusState private var searchFocused: Bool
 
     private static let audioExtensions: Set<String> = [
@@ -592,10 +593,7 @@ struct ContentView: View {
                                 },
                                 release: { engine.release(sound) },
                                 stop: { engine.stop(sound) },
-                                remove: {
-                                    engine.stop(sound, fade: false)
-                                    library.remove(sound)
-                                },
+                                remove: { removePad(sound) },
                                 update: { mutate in library.update(sound, mutate) },
                                 openInspector: { inspecting = sound },
                                 moveTargets: library.moveTargets(for: sound),
@@ -639,6 +637,15 @@ struct ContentView: View {
             Text(text.detail)
                 .font(Theme.Font.body())
                 .foregroundStyle(Theme.textTertiary)
+            // An empty deck gives the ways to fill it. A search or a smart deck does not.
+            if !library.isSearching, library.smartDeck == nil, !library.activeDeck.isLocked {
+                HStack(spacing: Theme.Spacing.s) {
+                    ChromeButton(title: "Add Files", icon: "plus", prominent: true) { showingFileImporter = true }
+                    ChromeButton(title: "Record", icon: "mic") { recording = true }
+                    ChromeButton(title: "Freesound", icon: "globe") { searchingFreesound = true }
+                }
+                .padding(.top, Theme.Spacing.s)
+            }
         }
     }
 
@@ -680,6 +687,29 @@ struct ContentView: View {
     }
 
     // MARK: - Actions
+
+    /// Removes a pad. Edit > Undo puts it back, and Redo removes it again.
+    private func removePad(_ sound: SoundItem) {
+        engine.stop(sound, fade: false)
+        guard let removed = library.removeUndoably(sound) else { return }
+        registerUndo(of: removed)
+    }
+
+    private func registerUndo(of removed: SoundLibrary.RemovedPad) {
+        guard let undoManager else { return }
+        undoManager.registerUndo(withTarget: library) { library in
+            MainActor.assumeIsolated {
+                guard library.restore(removed) else { return }
+                undoManager.registerUndo(withTarget: library) { library in
+                    MainActor.assumeIsolated {
+                        if let again = library.removeUndoably(removed.item) { registerUndo(of: again) }
+                    }
+                }
+                undoManager.setActionName("Remove Pad")
+            }
+        }
+        undoManager.setActionName("Remove Pad")
+    }
 
     private func triggerHotKey(_ character: String) {
         guard let sound = library.sound(forHotKey: character) else { return }
@@ -972,6 +1002,10 @@ private struct ShortcutList: View {
         ("Return", "Play the last pad again"),
         ("A–Z, 0–9", "Play the pad with that key"),
         (".", "Go: play the standby cue (List)"),
+        ("⌘.", "Stop all sounds, from any window"),
+        ("⌘R", "Play the last pad again, from any window"),
+        ("⌘[  ⌘]", "Previous deck, next deck"),
+        ("⌘Z", "Undo the removal of a pad"),
         ("⌘F", "Search"),
         ("Esc", "Leave the search field")
     ]

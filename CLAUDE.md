@@ -128,7 +128,7 @@ This file adds, removes, reorders and renames sounds. It also assigns hotkeys an
 
 The property `sounds` gives the pads of the active deck. The function `sound(withID:)` finds a pad in any deck. A pad from another deck can still play.
 
-When you remove a pad or a deck, the library deletes the copied files.
+When you remove a deck, the library deletes the copied files. When you remove a pad, the library moves its copy to `Sounds/.removed/`. Edit > Undo calls `restore`, which moves the copy back. The next start empties `Sounds/.removed/`. Do not delete unused folders in `Sounds/` at start: a pad that the store could not read still needs its file.
 
 The function `resolve()` saves a refreshed bookmark when macOS reports a stale bookmark.
 
@@ -289,6 +289,10 @@ A tile shows the icon, the name, the key, a waveform and the play length. The pa
 The main window shows no alert for a playback error. The monitor strip shows the error for 4 seconds. The type `TransientNotice` controls this period. Only import and export show an alert. Stop All is at the right of the monitor strip.
 
 The Add button is a menu: Add Files, Record, Speech Pad and Freesound. The context menu of a deck has Rename, Export, Lock and Delete. Command-F focuses the search field.
+
+The Playback menu has Stop All Sounds (⌘.), Play Last Pad Again (⌘R), Next Deck (⌘]) and Previous Deck (⌘[). These items also work from the floating deck and from Settings.
+
+An empty deck shows the buttons Add Files, Record and Freesound.
 
 Space always stops all sounds, also when a pad has focus. Return plays the focused pad, or plays the last pad again when no pad has focus.
 

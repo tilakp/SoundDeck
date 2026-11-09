@@ -82,6 +82,7 @@ final class SoundLibrary: ObservableObject {
 
     init(store: SoundLibraryStore = SoundLibraryStore()) {
         self.store = store
+        defer { emptyHoldingDirectory() }
         if let loaded = store.load() {
             decks = loaded.decks
             activeDeckID = loaded.activeDeckID
@@ -350,10 +351,41 @@ final class SoundLibrary: ObservableObject {
     /// Returns false when the deck of the pad is locked.
     @discardableResult
     func remove(_ sound: SoundItem) -> Bool {
-        guard let location = locate(sound.id), !decks[location.deck].isLocked else { return false }
+        removeUndoably(sound) != nil
+    }
+
+    /// A removed pad, with the place that Undo puts it back in.
+    struct RemovedPad {
+        let item: SoundItem
+        let deckID: UUID
+        let index: Int
+    }
+
+    /// Removes a pad and keeps its copied file in a holding directory until the next start.
+    /// Returns nil when the deck of the pad is locked.
+    @discardableResult
+    func removeUndoably(_ sound: SoundItem) -> RemovedPad? {
+        guard let location = locate(sound.id), !decks[location.deck].isLocked else { return nil }
         let item = decks[location.deck].sounds.remove(at: location.sound)
-        deleteCopy(of: item)
+        holdCopy(of: item)
         recentIDs.removeAll { $0 == item.id }
+        save()
+        return RemovedPad(item: item, deckID: decks[location.deck].id, index: location.sound)
+    }
+
+    /// Puts a removed pad back in its deck. Returns false when the deck is gone or locked.
+    /// If another pad took the key in the meantime, the restored pad has no key.
+    @discardableResult
+    func restore(_ removed: RemovedPad) -> Bool {
+        guard let deck = decks.firstIndex(where: { $0.id == removed.deckID }), !decks[deck].isLocked,
+              locate(removed.item.id) == nil else { return false }
+        var item = removed.item
+        if let key = item.hotKey?.lowercased(),
+           decks[deck].sounds.contains(where: { $0.hotKey?.lowercased() == key }) {
+            item.hotKey = nil
+        }
+        releaseCopy(of: item)
+        decks[deck].sounds.insert(item, at: min(removed.index, decks[deck].sounds.count))
         save()
         return true
     }
@@ -467,6 +499,13 @@ final class SoundLibrary: ObservableObject {
         save()
     }
 
+    /// Selects the next deck (`offset` 1) or the previous deck (`offset` -1). The order wraps.
+    func selectAdjacentDeck(offset: Int) {
+        guard !decks.isEmpty else { return }
+        let next = (activeIndex + offset % decks.count + decks.count) % decks.count
+        selectDeck(decks[next].id)
+    }
+
     @discardableResult
     func renameDeck(_ id: UUID, to newName: String) -> Bool {
         let trimmed = newName.trimmingCharacters(in: .whitespaces)
@@ -573,6 +612,33 @@ final class SoundLibrary: ObservableObject {
         } else {
             try fileManager.copyItem(at: source, to: target)
         }
+    }
+
+    /// Removed pads keep their copies here, so Undo can put them back. The next start empties it.
+    private var holdingDirectoryURL: URL {
+        store.soundsDirectoryURL.appendingPathComponent(".removed", isDirectory: true)
+    }
+
+    private func holdCopy(of item: SoundItem) {
+        guard item.isCopied else { return }
+        let source = item.copyURL(in: store.soundsDirectoryURL).deletingLastPathComponent()
+        let target = holdingDirectoryURL.appendingPathComponent(item.id.uuidString, isDirectory: true)
+        try? fileManager.createDirectory(at: holdingDirectoryURL, withIntermediateDirectories: true)
+        try? fileManager.removeItem(at: target)
+        if (try? fileManager.moveItem(at: source, to: target)) == nil {
+            try? fileManager.removeItem(at: source)
+        }
+    }
+
+    private func releaseCopy(of item: SoundItem) {
+        guard item.isCopied else { return }
+        let source = holdingDirectoryURL.appendingPathComponent(item.id.uuidString, isDirectory: true)
+        let target = item.copyURL(in: store.soundsDirectoryURL).deletingLastPathComponent()
+        try? fileManager.moveItem(at: source, to: target)
+    }
+
+    private func emptyHoldingDirectory() {
+        try? fileManager.removeItem(at: holdingDirectoryURL)
     }
 
     private func deleteCopy(of item: SoundItem) {
