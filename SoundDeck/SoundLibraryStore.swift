@@ -15,7 +15,8 @@ final class SoundLibraryStore {
     /// Version 1 has one list of sounds. Version 2 has decks. In version 3, pad names
     /// have no file extension. Version 4 adds the meeting sounds to the decks that have bundled pads.
     /// In version 5, two bundled files are recordings, so their pads need a new loudness measurement.
-    static let currentVersion = 5
+    /// Version 6 gives the bundled pads their icons.
+    static let currentVersion = 6
 
     /// The decks and the active deck, as the store reads and writes them.
     struct State: Equatable {

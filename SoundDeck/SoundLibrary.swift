@@ -90,6 +90,7 @@ final class SoundLibrary: ObservableObject {
             replaceMissingBundledSounds()
             if loaded.version < 4 { addMeetingSounds() }
             if loaded.version < 5 { forgetMeasurements(of: Self.rerecordedSounds) }
+            if loaded.version < 6 { addBundledSymbols() }
             copyOldImports()
         } else {
             loadBundledSounds()
@@ -141,6 +142,19 @@ final class SoundLibrary: ObservableObject {
                 guard sound.isBundled, fileNames.contains(sound.fileName) else { continue }
                 decks[deck].sounds[index].measuredLoudness = nil
                 decks[deck].sounds[index].measuredPeak = nil
+            }
+        }
+        save()
+    }
+
+    /// Before version 6, pads had no SF Symbol. Give each bundled pad its icon,
+    /// unless the user chose an emoji for it.
+    private func addBundledSymbols() {
+        for deck in decks.indices {
+            for index in decks[deck].sounds.indices {
+                let sound = decks[deck].sounds[index]
+                guard sound.isBundled, sound.symbol == nil, sound.emoji == nil else { continue }
+                decks[deck].sounds[index].symbol = PadSymbols.bundled[sound.fileName]
             }
         }
         save()

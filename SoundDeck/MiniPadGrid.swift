@@ -143,6 +143,10 @@ private struct MiniPad: View {
             } else if isPlaying {
                 PlayingBars(color: tint)
                     .scaleEffect(0.75, anchor: .bottomTrailing)
+            } else if let symbol = sound.symbol {
+                Image(systemName: symbol)
+                    .font(Theme.Font.caption(.semibold))
+                    .foregroundStyle(tint)
             } else if let emoji = sound.emoji, !emoji.isEmpty {
                 Text(emoji).font(Theme.Font.caption())
             }

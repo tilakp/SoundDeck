@@ -100,6 +100,8 @@ This file holds the model and the type `BookmarkFlavor`.
 
 A pad has one of three sources. A bundled pad reads `Resources/<fileName>`. A copied pad reads `Sounds/<id>/<fileName>` in the library directory. An old pad reads its bookmark. The display name is `name`. A rename does not change `fileName`.
 
+The icon of a pad is an SF Symbol in `symbol`. The list `PadSymbols.choices` gives the permitted symbols. A test checks that each symbol exists. The field `emoji` is from an earlier version. The tile still shows it.
+
 The decoder reads each new field with `decodeIfPresent`. A strict decoder rejects an older library file. A rejected file deletes the deck of the user. Keep this method when you add a field.
 
 ### Deck.swift
@@ -112,7 +114,7 @@ A deck shows a grid or a cue list. `Deck.layout` holds the choice. A locked deck
 
 This file writes JSON to `~/Library/Application Support/SoundDeck/library.json`. The write is atomic.
 
-Version 2 of the file holds the decks and the active deck. The store reads a version 1 file as one deck with the name "Main". In version 3, pad names have no file extension. The library removes the extension one time from each name that the user did not change. In version 4, the library adds the meeting sounds one time to the end of each deck that has a bundled pad and is not locked. The list is `SoundLibrary.meetingSounds`. In version 5, the library clears the loudness of the pads in `SoundLibrary.rerecordedSounds`. A pad keeps its measurement, so a new file with the same name needs this step. The file also holds the Recent list. The directory `Sounds/` holds the copied audio files. Tests give the store a temporary directory.
+Version 2 of the file holds the decks and the active deck. The store reads a version 1 file as one deck with the name "Main". In version 3, pad names have no file extension. The library removes the extension one time from each name that the user did not change. In version 4, the library adds the meeting sounds one time to the end of each deck that has a bundled pad and is not locked. The list is `SoundLibrary.meetingSounds`. In version 5, the library clears the loudness of the pads in `SoundLibrary.rerecordedSounds`. A pad keeps its measurement, so a new file with the same name needs this step. In version 6, the library gives each bundled pad its icon from `PadSymbols.bundled`, unless the pad has an emoji. The file also holds the Recent list. The directory `Sounds/` holds the copied audio files. Tests give the store a temporary directory.
 
 Do not use `UserDefaults`. `UserDefaults` is a preferences store. A change to the sandbox status replaces the container. An earlier build lost its library for this reason.
 
@@ -279,6 +281,10 @@ The surfaces are opaque. Do not use `.ultraThinMaterial`. On macOS a material sa
 ### Views
 
 The main views are `ContentView`, `SoundTile`, `SoundInspector`, `MenuBarDeck`, `MiniPadGrid` and `SettingsView`.
+
+The window has an empty unified toolbar (`UnifiedTitlebar`). The title bar is then 52 points high, and the window buttons are at its vertical centre. The header draws in this band. `Theme.windowButtonsInset` keeps it clear of the window buttons.
+
+A tile shows the icon, the name, the key, a waveform and the play length. The pad colour tints the whole tile. `PadPreviews` in `PadPreview.swift` reads the waveform and the length in the background. Its key includes the trim and the speed, so a change makes a new preview. Only the waveform of a playing pad observes `Playhead`.
 
 The main window shows no alert for a playback error. The monitor strip shows the error for 4 seconds. The type `TransientNotice` controls this period. Only import and export show an alert. Stop All is at the right of the monitor strip.
 

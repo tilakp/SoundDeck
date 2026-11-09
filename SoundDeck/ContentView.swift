@@ -20,6 +20,7 @@ struct ContentView: View {
     @State private var deletingDeck: Deck?
     @State private var notice = TransientNotice()
     @State private var showingShortcuts = false
+    @StateObject private var previews = PadPreviews()
     @FocusState private var searchFocused: Bool
 
     private static let audioExtensions: Set<String> = [
@@ -30,17 +31,22 @@ struct ContentView: View {
         ZStack {
             Theme.backdrop.ignoresSafeArea()
 
-            VStack(spacing: Theme.Spacing.l) {
+            VStack(spacing: Theme.Spacing.m) {
+                // The header is in the title bar, in one row with the window buttons.
                 header
+                    .padding(.leading, Theme.windowButtonsInset - Theme.Spacing.l)
+                    .frame(height: Theme.titlebarHeight)
                 monitor
                 deckBar
                 deckArea
             }
-            .padding(Theme.Spacing.l)
+            .padding([.horizontal, .bottom], Theme.Spacing.l)
+            .ignoresSafeArea(.container, edges: .top)
 
             if isDropTargeted { dropOverlay }
         }
         .frame(minWidth: 720, minHeight: 560)
+        .background(UnifiedTitlebar())
         .background(KeyboardHandler(
             onStop: { engine.stopAll() },
             onReplay: replayOrFireFocusedPad,
@@ -308,7 +314,7 @@ struct ContentView: View {
                     .frame(width: 150, alignment: .leading)
 
                 monitorCentre
-                    .frame(height: 44)
+                    .frame(height: 28)
                     .frame(maxWidth: .infinity)
 
                 masterVolume
@@ -319,7 +325,7 @@ struct ContentView: View {
                 }
             }
             .padding(.horizontal, Theme.Spacing.l)
-            .padding(.vertical, Theme.Spacing.m)
+            .padding(.vertical, Theme.Spacing.s)
         }
     }
 
@@ -379,6 +385,27 @@ struct ContentView: View {
     /// The smart decks, then the decks. Keys play pads of the active deck only.
     /// A smart deck does not change the active deck, so the keys keep the last real deck.
     private var deckBar: some View {
+        HStack(spacing: Theme.Spacing.m) {
+            deckChips
+            layoutPicker
+        }
+    }
+
+    private var layoutPicker: some View {
+        Picker("Layout", selection: Binding(
+            get: { library.activeDeck.layout },
+            set: { library.setLayout($0) }
+        )) {
+            ForEach(DeckLayout.allCases) { Text($0.label).tag($0) }
+        }
+        .pickerStyle(.segmented)
+        .labelsHidden()
+        .controlSize(.small)
+        .fixedSize()
+        .help("Show the deck as a grid of pads or as a cue list")
+    }
+
+    private var deckChips: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: Theme.Spacing.s) {
                 ForEach(SmartDeck.allCases) { smart in smartChip(smart) }
@@ -522,28 +549,12 @@ struct ContentView: View {
         focusedPadID = sounds[target].id
     }
 
-    /// The grid or the cue list of the active deck, with the layout control above it.
-    private var deckArea: some View {
-        VStack(spacing: Theme.Spacing.s) {
-            HStack {
-                Spacer()
-                Picker("Layout", selection: Binding(
-                    get: { library.activeDeck.layout },
-                    set: { library.setLayout($0) }
-                )) {
-                    ForEach(DeckLayout.allCases) { Text($0.label).tag($0) }
-                }
-                .pickerStyle(.segmented)
-                .labelsHidden()
-                .controlSize(.small)
-                .fixedSize()
-                .help("Show the deck as a grid of pads or as a cue list")
-            }
-            if library.activeDeck.layout == .cueList {
-                CueListView(library: library, engine: engine, go: goCue)
-            } else {
-                deck
-            }
+    /// The grid or the cue list of the active deck. The layout control is in the deck bar.
+    @ViewBuilder private var deckArea: some View {
+        if library.activeDeck.layout == .cueList {
+            CueListView(library: library, engine: engine, go: goCue)
+        } else {
+            deck
         }
     }
 
@@ -574,6 +585,7 @@ struct ContentView: View {
                                 isFocused: focusedPadID == sound.id,
                                 errorMessage: engine.padErrors[sound.id],
                                 playhead: engine.playhead,
+                                preview: previews.preview(for: sound),
                                 play: {
                                     endEditing()
                                     play(sound)
@@ -592,6 +604,9 @@ struct ContentView: View {
                                 deckLabel: library.showsAllDecks ? library.deckName(of: sound.id) : nil
                             )
                             .focused($focusedPadID, equals: sound.id)
+                            .task(id: PadPreviews.Key(sound)) {
+                                previews.load(sound, resolution: library.resolve(sound))
+                            }
                             .onDrag {
                                 NSItemProvider(object: sound.id.uuidString as NSString)
                             }
@@ -882,6 +897,24 @@ struct KeyboardHandler: NSViewRepresentable {
                   let first = event.charactersIgnoringModifiers?.first,
                   first.isLetter || first.isNumber else { return nil }
             return String(first)
+        }
+    }
+}
+
+/// Gives the window an empty unified toolbar. The title bar is then 52 points high,
+/// and the window buttons are at its vertical centre. The header draws in this band.
+private struct UnifiedTitlebar: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSView { Accessor() }
+    func updateNSView(_ nsView: NSView, context: Context) {}
+
+    final class Accessor: NSView {
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            guard let window, window.toolbar == nil else { return }
+            window.toolbar = NSToolbar(identifier: "SoundDeckMain")
+            window.toolbarStyle = .unified
+            window.titleVisibility = .hidden
+            window.titlebarAppearsTransparent = true
         }
     }
 }

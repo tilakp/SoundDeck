@@ -23,6 +23,7 @@ struct DeckArchive: Codable {
         var trimEnd: Double?
         var tint: SoundTint
         var emoji: String?
+        var symbol: String?
         var hotKey: String?
         /// Nil in files from version 2.1 of the application.
         var matchesLoudness: Bool?
@@ -80,6 +81,7 @@ extension SoundLibrary {
                 trimEnd: sound.trimEnd,
                 tint: sound.tint,
                 emoji: sound.emoji,
+                symbol: sound.symbol,
                 hotKey: sound.hotKey,
                 matchesLoudness: sound.matchesLoudness,
                 playMode: sound.playMode,
@@ -127,6 +129,7 @@ extension SoundLibrary {
             item.trimEnd = entry.trimEnd
             item.tint = entry.tint
             item.emoji = entry.emoji
+            item.symbol = entry.symbol
             item.hotKey = entry.hotKey
             item.matchesLoudness = entry.matchesLoudness ?? true
             item.playMode = entry.playMode ?? .layer

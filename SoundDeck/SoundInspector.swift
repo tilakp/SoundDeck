@@ -28,7 +28,8 @@ struct SoundInspector: View {
     @State private var speed = 1.0
     @State private var output: PadOutput = .both
     @State private var tint: SoundTint = .none
-    @State private var emoji: String = ""
+    /// The SF Symbol of the pad, or its old emoji. Empty means no icon.
+    @State private var icon: String = ""
     @State private var hotKey: String = ""
     @State private var midiTrigger: MIDITrigger?
     @State private var showsShape = false
@@ -41,7 +42,6 @@ struct SoundInspector: View {
     @State private var trimEnd: Double = 0
     @State private var previewError: String?
 
-    private let emojiChoices = ["", "🔔", "💥", "🎺", "🥁", "⚡️", "🎉", "😂", "👏", "🚨", "💧", "🐸", "🎸", "📣", "🛎️"]
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.l) {
@@ -64,12 +64,16 @@ struct SoundInspector: View {
                 RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous)
                     .fill(tint.color.opacity(0.20))
                     .frame(width: 32, height: 32)
-                if emoji.isEmpty {
+                if icon.isEmpty {
                     Text(sound.initials)
                         .font(Theme.Font.title(.bold))
                         .foregroundStyle(tint.color)
+                } else if icon == sound.emoji {
+                    Text(icon).font(Theme.Font.title(.regular))
                 } else {
-                    Text(emoji).font(Theme.Font.title(.regular))
+                    Image(systemName: icon)
+                        .font(Theme.Font.title(.semibold))
+                        .foregroundStyle(tint.color)
                 }
             }
             .accessibilityHidden(true)
@@ -227,13 +231,19 @@ struct SoundInspector: View {
 
             Divider().frame(height: 16).opacity(0.3)
 
-            Picker("Icon", selection: $emoji) {
-                ForEach(emojiChoices, id: \.self) { choice in
-                    Text(choice.isEmpty ? "None" : choice).tag(choice)
+            Picker("Icon", selection: $icon) {
+                Text("None").tag("")
+                // An emoji from an earlier version stays a choice until the user changes it.
+                if let emoji = sound.emoji, !emoji.isEmpty {
+                    Text(emoji).tag(emoji)
+                }
+                Divider()
+                ForEach(PadSymbols.choices, id: \.symbol) { choice in
+                    Label(choice.label, systemImage: choice.symbol).tag(choice.symbol)
                 }
             }
             .labelsHidden()
-            .frame(width: 74)
+            .frame(width: 130)
             .controlSize(.small)
             .accessibilityLabel("Icon")
             .help("Icon")
@@ -413,7 +423,7 @@ struct SoundInspector: View {
         speed = sound.speed
         output = sound.output
         tint = sound.tint
-        emoji = sound.emoji ?? ""
+        icon = sound.symbol ?? sound.emoji ?? ""
         hotKey = sound.hotKey ?? ""
         midiTrigger = sound.midiTrigger
         eq = sound.eq ?? PadEQ()
@@ -466,7 +476,9 @@ struct SoundInspector: View {
             item.matchesLoudness = matchesLoudness
             applyPlayback(to: &item)
             item.tint = tint
-            item.emoji = emoji.isEmpty ? nil : emoji
+            let keepsEmoji = !icon.isEmpty && icon == sound.emoji
+            item.emoji = keepsEmoji ? icon : nil
+            item.symbol = icon.isEmpty || keepsEmoji ? nil : icon
             item.hotKey = hotKey.isEmpty ? nil : hotKey
             item.midiTrigger = midiTrigger
             // Before the duration loads, the trim values are not real. Keep the saved trim.
